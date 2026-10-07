@@ -1,5 +1,6 @@
+import 'dart:math';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
 
 import '../models/pet.dart';
 import '../models/pet_schedule.dart';
@@ -7,7 +8,7 @@ import '../models/pet_schedule.dart';
 class PetScheduleService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  final Uuid _uuid = const Uuid();
+  final Random _random = Random.secure();
 
   String get _currentUserId {
     final user = _supabase.auth.currentUser;
@@ -86,10 +87,11 @@ class PetScheduleService {
     required int hour,
     required int minute,
     String notes = '',
+    String repeat = 'Does not repeat',
   }) async {
     final userId = _currentUserId;
 
-    final id = _uuid.v4();
+    final id = _newId();
 
     final dateOnly = DateTime(
       date.year,
@@ -115,6 +117,7 @@ class PetScheduleService {
           'date': dateString,
           'time': timeString,
           'notes': notes.trim(),
+          'repeat': repeat,
         })
         .select()
         .single();
@@ -123,6 +126,68 @@ class PetScheduleService {
       Map<String, dynamic>.from(row),
       petName: pet.name,
     );
+  }
+
+  // ==========================================
+  // UPDATE
+  // ==========================================
+
+  Future<PetSchedule> updateSchedule({
+    required String scheduleId,
+    required Pet pet,
+    required String title,
+    required String type,
+    required DateTime date,
+    required int hour,
+    required int minute,
+    required String notes,
+    required String repeat,
+  }) async {
+    final userId = _currentUserId;
+    final dateOnly = DateTime(date.year, date.month, date.day);
+    final dateString = '${dateOnly.year.toString().padLeft(4, '0')}-'
+        '${dateOnly.month.toString().padLeft(2, '0')}-'
+        '${dateOnly.day.toString().padLeft(2, '0')}';
+    final timeString = '${hour.toString().padLeft(2, '0')}:'
+        '${minute.toString().padLeft(2, '0')}:00';
+
+    final row = await _supabase
+        .from('pet_schedules')
+        .update({
+          'pet_id': pet.id,
+          'title': title.trim(),
+          'type': type,
+          'date': dateString,
+          'time': timeString,
+          'notes': notes.trim(),
+          'repeat': repeat,
+        })
+        .eq('id', scheduleId)
+        .eq('owner_id', userId)
+        .select()
+        .single();
+
+    return PetSchedule.fromMap(
+      Map<String, dynamic>.from(row),
+      petName: pet.name,
+    );
+  }
+
+  // ==========================================
+  // UPDATE COMPLETION STATUS
+  // ==========================================
+
+  Future<void> updateScheduleStatus({
+    required String scheduleId,
+    required bool isDone,
+  }) async {
+    await _supabase
+        .from('pet_schedules')
+        .update({'is_done': isDone})
+        .eq('id', scheduleId)
+        .eq('owner_id', _currentUserId)
+        .select('id')
+        .single();
   }
 
   // ==========================================
@@ -157,5 +222,18 @@ class PetScheduleService {
         Map<String, dynamic>.from(row),
       );
     }).toList();
+  }
+
+  String _newId() {
+    final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
+    // Set the UUID version (4) and variant bits.
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0'));
+    final value = hex.join();
+    return '${value.substring(0, 8)}-${value.substring(8, 12)}-'
+        '${value.substring(12, 16)}-${value.substring(16, 20)}-'
+        '${value.substring(20)}';
   }
 }

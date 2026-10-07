@@ -67,16 +67,18 @@ class PetCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      pet.breed,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.black54,
-                        fontSize: 13,
+                    if (pet.breed.trim().isNotEmpty) ...[
+                      Text(
+                        pet.breed,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 13,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 9),
+                      const SizedBox(height: 9),
+                    ],
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,

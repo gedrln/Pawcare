@@ -1,11 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../models/user_profile.dart';
 import '../../services/auth_service.dart';
-import 'accessibility_page.dart';
+import '../../services/notification_service.dart';
+import '../../services/pet_schedule_service.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   final UserProfile profile;
   final VoidCallback onProfileTap;
 
@@ -16,203 +18,353 @@ class SettingsPage extends StatelessWidget {
   });
 
   @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  final NotificationService _notifications = NotificationService.instance;
+
+  bool _notificationsEnabled = false;
+  bool _notificationPermissionGranted = false;
+  bool _notificationsLoading = true;
+  bool _notificationsUpdating = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationSettings();
+  }
+
+  Future<void> _loadNotificationSettings() async {
+    try {
+      final results = await Future.wait([
+        _notifications.hasPermission(),
+        _notifications.remindersEnabled(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _notificationPermissionGranted = results[0] as bool;
+        _notificationsEnabled =
+            (results[1] as bool) && _notificationPermissionGranted;
+        _notificationsLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _notificationsLoading = false);
+    }
+  }
+
+  Future<void> _setNotificationsEnabled(bool enabled) async {
+    if (_notificationsUpdating) return;
+    setState(() => _notificationsUpdating = true);
+    try {
+      if (!enabled) {
+        await _notifications.setRemindersEnabled(false);
+        if (mounted) {
+          setState(() {
+            _notificationsEnabled = false;
+            _notificationsUpdating = false;
+          });
+        }
+        return;
+      }
+
+      final granted = await _notifications.requestPermission();
+      if (!granted) {
+        await _notifications.setRemindersEnabled(false);
+        if (mounted) {
+          setState(() {
+            _notificationPermissionGranted = false;
+            _notificationsEnabled = false;
+            _notificationsUpdating = false;
+          });
+          _showNotificationMessage(
+            'Allow notifications in your device or browser settings.',
+          );
+        }
+        return;
+      }
+
+      await _notifications.setRemindersEnabled(true);
+      if (!kIsWeb) {
+        final schedules = await PetScheduleService().getMySchedules();
+        await _notifications.scheduleAll(schedules);
+      }
+      if (mounted) {
+        setState(() {
+          _notificationPermissionGranted = true;
+          _notificationsEnabled = true;
+          _notificationsUpdating = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() => _notificationsUpdating = false);
+        _showNotificationMessage('Could not update notifications: $error');
+      }
+    }
+  }
+
+  void _showNotificationMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        20,
-        18,
-        20,
-        110,
-      ),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 220),
       children: [
-        const Text(
-          'Settings',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w800,
-            color: AppConstants.darkText,
-          ),
-        ),
-        const SizedBox(height: 5),
-        const Text(
-          'Manage your profile and app preferences.',
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.black45,
-          ),
-        ),
-        const SizedBox(height: 22),
-        const _SectionLabel(
-          title: 'ACCOUNT',
-        ),
-        const SizedBox(height: 8),
-        Card(
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(
-              14,
-            ),
-            leading: _Avatar(
-              name: profile.name,
-            ),
-            title: Text(
-              profile.name,
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'My Profile',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  color: AppConstants.darkText,
+                ),
               ),
             ),
-            subtitle: Text(
-              profile.email.isEmpty ? 'Pet Owner' : profile.email,
-              style: const TextStyle(
-                fontSize: 12,
-              ),
+            IconButton(
+              tooltip: 'Edit profile',
+              onPressed: widget.onProfileTap,
+              icon: const Icon(Icons.edit_rounded),
+              color: AppConstants.darkText,
             ),
-            trailing: const Icon(
-              Icons.chevron_right_rounded,
-            ),
-            onTap: onProfileTap,
-          ),
+          ],
         ),
-        const SizedBox(height: 20),
-        const _SectionLabel(
-          title: 'PREFERENCES',
-        ),
-        const SizedBox(height: 8),
-        Card(
+        const SizedBox(height: 14),
+        Center(
           child: Column(
             children: [
-              ListTile(
-                leading: const Icon(
-                  Icons.notifications_none_rounded,
-                ),
-                title: const Text(
-                  'Notifications',
-                ),
-                subtitle: const Text(
-                  'Manage reminders and alerts.',
-                  style: TextStyle(
-                    fontSize: 11,
-                  ),
-                ),
-                trailing: const Icon(
-                  Icons.chevron_right_rounded,
-                ),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Notification settings will be connected later.',
-                      ),
-                    ),
-                  );
-                },
+              _ProfileAvatar(
+                name: widget.profile.name,
+                imageUrl: widget.profile.avatarUrl,
               ),
-              const Divider(
-                height: 1,
-                indent: 64,
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.accessibility_new_rounded,
+              const SizedBox(height: 12),
+              Text(
+                widget.profile.name,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppConstants.darkText,
+                  fontSize: 23,
+                  fontWeight: FontWeight.w800,
                 ),
-                title: const Text(
-                  'Accessibility',
-                ),
-                subtitle: const Text(
-                  'Text, contrast, and motion preferences.',
-                  style: TextStyle(
-                    fontSize: 11,
-                  ),
-                ),
-                trailing: const Icon(
-                  Icons.chevron_right_rounded,
-                ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const AccessibilityPage(),
-                    ),
-                  );
-                },
               ),
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        const _SectionLabel(
-          title: 'ACCOUNT ACTIONS',
-        ),
-        const SizedBox(height: 8),
-        Card(
-          child: ListTile(
-            leading: const Icon(
-              Icons.logout_rounded,
-              color: Colors.redAccent,
+        const SizedBox(height: 30),
+        const _SectionLabel('ACCOUNT INFORMATION'),
+        const SizedBox(height: 10),
+        _ProfileInfoCard(
+          children: [
+            _InfoRow(
+              icon: Icons.person_outline_rounded,
+              label: 'Full name',
+              value: widget.profile.name,
             ),
-            title: const Text(
-              'Log Out',
-              style: TextStyle(
-                color: Colors.redAccent,
-                fontWeight: FontWeight.w700,
+            const Divider(height: 1, indent: 58),
+            _InfoRow(
+              icon: Icons.email_outlined,
+              label: 'Email',
+              value: widget.profile.email.isEmpty
+                  ? 'Not provided'
+                  : widget.profile.email,
+            ),
+          ],
+        ),
+        const SizedBox(height: 26),
+        const _SectionLabel('PREFERENCES'),
+        const SizedBox(height: 10),
+        _ProfileInfoCard(
+          children: [
+            Material(
+              color: Colors.transparent,
+              child: SwitchListTile.adaptive(
+                value: _notificationsEnabled,
+                onChanged: _notificationsLoading || _notificationsUpdating
+                    ? null
+                    : _setNotificationsEnabled,
+                secondary: const Icon(
+                  Icons.notifications_none_rounded,
+                  size: 27,
+                  color: Color(0xFF62564B),
+                ),
+                title: const Text(
+                  'Notifications',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text(
+                  _notificationsLoading
+                      ? 'Loading notification settings…'
+                      : _notificationsEnabled
+                          ? 'Alerts are enabled for your saved pet schedules.'
+                          : 'Get notified when it is time for your pets’ care.',
+                ),
               ),
             ),
-            onTap: () => _showLogoutDialog(
-              context,
+          ],
+        ),
+        const SizedBox(height: 26),
+        const _SectionLabel('ACCOUNT ACTIONS'),
+        const SizedBox(height: 10),
+        _ProfileInfoCard(
+          children: [
+            Material(
+              color: Colors.transparent,
+              child: ListTile(
+                minTileHeight: 74,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 6,
+                ),
+                leading: const Icon(
+                  Icons.logout_rounded,
+                  color: Colors.redAccent,
+                ),
+                title: const Text(
+                  'Log Out',
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                onTap: () => _showLogoutDialog(context),
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );
   }
 
-  Future<void> _showLogoutDialog(
-    BuildContext context,
-  ) async {
+  Future<void> _showLogoutDialog(BuildContext context) async {
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Log Out'),
-          content: const Text(
-            'Are you sure you want to log out of Pawcare?',
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Log Out'),
+        content: const Text('Are you sure you want to log out of Pawcare?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(
-                dialogContext,
-              ),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(
-                  dialogContext,
-                );
-
-                try {
-                  await AuthService.signOut();
-                } catch (error) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Could not log out: $error',
-                        ),
-                      ),
-                    );
-                  }
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              try {
+                await AuthService.signOut();
+              } catch (error) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not log out: $error')),
+                  );
                 }
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.redAccent,
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            child: const Text('Log Out'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileAvatar extends StatelessWidget {
+  final String name;
+  final String? imageUrl;
+
+  const _ProfileAvatar({required this.name, required this.imageUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedName = name.trim();
+    final initial = trimmedName.isEmpty ? 'P' : trimmedName[0].toUpperCase();
+
+    return CircleAvatar(
+      radius: 62,
+      backgroundColor: AppConstants.lightPrimary,
+      backgroundImage: imageUrl == null || imageUrl!.isEmpty
+          ? null
+          : NetworkImage(imageUrl!),
+      child: imageUrl == null || imageUrl!.isEmpty
+          ? Text(
+              initial,
+              style: const TextStyle(
+                fontSize: 42,
+                fontWeight: FontWeight.w700,
+                color: AppConstants.darkText,
               ),
-              child: const Text(
-                'Log Out',
-              ),
-            ),
-          ],
-        );
-      },
+            )
+          : null,
+    );
+  }
+}
+
+class _ProfileInfoCard extends StatelessWidget {
+  final List<Widget> children;
+
+  const _ProfileInfoCard({required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        minTileHeight: 76,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 18,
+          vertical: 5,
+        ),
+        leading: Icon(
+          icon,
+          color: const Color(0xFF62564B),
+        ),
+        title: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.black54,
+          ),
+        ),
+        subtitle: Text(
+          value,
+          style: const TextStyle(
+            fontSize: 15,
+            color: AppConstants.darkText,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -220,9 +372,7 @@ class SettingsPage extends StatelessWidget {
 class _SectionLabel extends StatelessWidget {
   final String title;
 
-  const _SectionLabel({
-    required this.title,
-  });
+  const _SectionLabel(this.title);
 
   @override
   Widget build(BuildContext context) {
@@ -233,47 +383,6 @@ class _SectionLabel extends StatelessWidget {
         fontWeight: FontWeight.w800,
         letterSpacing: 1.1,
         color: Colors.black45,
-      ),
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  final String name;
-
-  const _Avatar({
-    required this.name,
-  });
-
-  String _initials() {
-    final value = name.trim();
-
-    if (value.isEmpty) {
-      return 'P';
-    }
-
-    final words = value.split(
-      RegExp(r'\s+'),
-    );
-
-    if (words.length == 1) {
-      return words.first[0].toUpperCase();
-    }
-
-    return '${words.first[0]}${words.last[0]}'.toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 27,
-      backgroundColor: AppConstants.lightPrimary,
-      child: Text(
-        _initials(),
-        style: const TextStyle(
-          color: AppConstants.darkText,
-          fontWeight: FontWeight.w800,
-        ),
       ),
     );
   }

@@ -9,6 +9,8 @@ class PetSchedule {
   final int hour;
   final int minute;
   final String notes;
+  final String repeat;
+  final bool isDone;
   final DateTime? createdAt;
 
   const PetSchedule({
@@ -22,6 +24,8 @@ class PetSchedule {
     required this.hour,
     required this.minute,
     this.notes = '',
+    this.repeat = 'Does not repeat',
+    this.isDone = false,
     this.createdAt,
   });
 
@@ -63,6 +67,8 @@ class PetSchedule {
       'time': '${hour.toString().padLeft(2, '0')}:'
           '${minute.toString().padLeft(2, '0')}:00',
       'notes': notes,
+      'repeat': repeat,
+      'is_done': isDone,
     };
   }
 
@@ -118,6 +124,9 @@ class PetSchedule {
       hour: parsedHour,
       minute: parsedMinute,
       notes: map['notes']?.toString() ?? '',
+      repeat: map['repeat']?.toString() ?? 'Does not repeat',
+      isDone: map['is_done'] == true ||
+          map['is_done']?.toString().toLowerCase() == 'true',
       createdAt: parsedCreatedAt,
     );
   }
@@ -133,6 +142,8 @@ class PetSchedule {
     int? hour,
     int? minute,
     String? notes,
+    String? repeat,
+    bool? isDone,
     DateTime? createdAt,
   }) {
     return PetSchedule(
@@ -146,6 +157,8 @@ class PetSchedule {
       hour: hour ?? this.hour,
       minute: minute ?? this.minute,
       notes: notes ?? this.notes,
+      repeat: repeat ?? this.repeat,
+      isDone: isDone ?? this.isDone,
       createdAt: createdAt ?? this.createdAt,
     );
   }

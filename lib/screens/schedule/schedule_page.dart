@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/constants/app_constants.dart';
 import '../../models/pet.dart';
 import '../../models/pet_schedule.dart';
 import '../../services/notification_service.dart';
@@ -67,10 +68,26 @@ class _SchedulePageState extends State<SchedulePage> {
   // COLORS
   // ============================================================
 
-  static const Color yellow = Color.fromARGB(255, 217, 156, 2);
-  static const Color darkyelloow = Color.fromARGB(255, 130, 94, 3);
-  static const Color cream = Color(0xFFFFFBF5);
-  static const Color lightCream = Color(0xFFFFF8ED);
+  static const Color yellow = AppConstants.primaryColor;
+  static const Color cream = AppConstants.backgroundColor;
+  static const Color scheduleBrown = AppConstants.darkText;
+
+  InputDecoration _scheduleFieldDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: const TextStyle(color: scheduleBrown),
+      prefixIcon: Icon(icon, color: scheduleBrown),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(20)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(20),
+        borderSide: const BorderSide(color: Colors.black, width: 1.2),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(20),
+        borderSide: const BorderSide(color: scheduleBrown, width: 1.7),
+      ),
+    );
+  }
 
   // ============================================================
   // INIT
@@ -133,52 +150,6 @@ class _SchedulePageState extends State<SchedulePage> {
 
   Future<void> _refresh() async {
     await _loadData();
-  }
-
-  // ============================================================
-  // ENABLE NOTIFICATIONS
-  // ============================================================
-
-  Future<void> _enableNotifications() async {
-    try {
-      final granted = await _notificationService.requestPermission();
-
-      if (!mounted) return;
-
-      if (granted) {
-        await _notificationService.scheduleAll(
-          schedules,
-        );
-
-        if (!mounted) return;
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Schedule notifications have been enabled.',
-            ),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Notification permission was not granted.',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Unable to enable notifications: $e',
-          ),
-        ),
-      );
-    }
   }
 
   // ============================================================
@@ -297,8 +268,9 @@ class _SchedulePageState extends State<SchedulePage> {
   // ADD SCHEDULE
   // ============================================================
 
-  Future<void> _showAddScheduleDialog({
+  Future<void> _showScheduleDialog({
     DateTime? initialDate,
+    PetSchedule? schedule,
   }) async {
     if (pets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -312,19 +284,35 @@ class _SchedulePageState extends State<SchedulePage> {
       return;
     }
 
-    Pet selectedPet = pets.first;
-
-    String selectedType = scheduleTypes.first;
+    const repeatOptions = [
+      'Does not repeat',
+      'Everyday',
+      'Every week',
+      'Every month',
+    ];
+    Pet selectedPet = schedule == null
+        ? pets.first
+        : pets.firstWhere(
+            (pet) => pet.id == schedule.petId,
+            orElse: () => pets.first,
+          );
+    String selectedType = scheduleTypes.contains(schedule?.type)
+        ? schedule!.type
+        : scheduleTypes.first;
+    String selectedRepeat = repeatOptions.contains(schedule?.repeat)
+        ? schedule!.repeat
+        : repeatOptions.first;
 
     DateTime selectedScheduleDate = _dateOnly(
-      initialDate ?? selectedDate,
+      schedule?.date ?? initialDate ?? selectedDate,
     );
 
-    TimeOfDay selectedTime = TimeOfDay.now();
+    TimeOfDay selectedTime = schedule == null
+        ? TimeOfDay.now()
+        : TimeOfDay(hour: schedule.hour, minute: schedule.minute);
 
-    final titleController = TextEditingController();
-
-    final notesController = TextEditingController();
+    String scheduleTitle = schedule?.title ?? '';
+    String scheduleNotes = schedule?.notes ?? '';
 
     final result = await showDialog<bool>(
       context: context,
@@ -337,13 +325,14 @@ class _SchedulePageState extends State<SchedulePage> {
             return AlertDialog(
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(30),
               ),
-              title: const Text(
-                'Add Pet Schedule',
+              title: Text(
+                schedule == null ? 'Add Pet Schedule' : 'Edit Pet Schedule',
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color: const Color.fromARGB(255, 197, 165, 6),
+                  color: scheduleBrown,
                 ),
               ),
               content: SingleChildScrollView(
@@ -355,19 +344,9 @@ class _SchedulePageState extends State<SchedulePage> {
                     // ------------------------------------------------
 
                     DropdownButtonFormField<Pet>(
-                      value: selectedPet,
-                      decoration: InputDecoration(
-                        labelText: 'Pet',
-                        prefixIcon: const Icon(
-                          Icons.pets_outlined,
-                          color: const Color.fromARGB(255, 197, 165, 6),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(
-                            12,
-                          ),
-                        ),
-                      ),
+                      initialValue: selectedPet,
+                      isExpanded: true,
+                      decoration: _scheduleFieldDecoration('Pet', Icons.pets),
                       items: pets.map(
                         (pet) {
                           return DropdownMenuItem<Pet>(
@@ -390,47 +369,14 @@ class _SchedulePageState extends State<SchedulePage> {
                     const SizedBox(height: 16),
 
                     // ------------------------------------------------
-                    // TITLE
-                    // ------------------------------------------------
-
-                    TextField(
-                      controller: titleController,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        labelText: 'Schedule title',
-                        hintText: 'e.g. Give medicine',
-                        prefixIcon: const Icon(
-                          Icons.event_note_outlined,
-                          color: const Color.fromARGB(255, 197, 165, 6),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(
-                            12,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // ------------------------------------------------
                     // TYPE
                     // ------------------------------------------------
 
                     DropdownButtonFormField<String>(
-                      value: selectedType,
-                      decoration: InputDecoration(
-                        labelText: 'Type',
-                        prefixIcon: const Icon(
-                          Icons.category_outlined,
-                          color: const Color.fromARGB(255, 197, 165, 6),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(
-                            12,
-                          ),
-                        ),
-                      ),
+                      initialValue: selectedType,
+                      isExpanded: true,
+                      decoration: _scheduleFieldDecoration(
+                          'Type', Icons.grid_view_rounded),
                       items: scheduleTypes.map(
                         (type) {
                           return DropdownMenuItem<String>(
@@ -450,6 +396,18 @@ class _SchedulePageState extends State<SchedulePage> {
                           selectedType = value;
                         });
                       },
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    TextFormField(
+                      initialValue: scheduleTitle,
+                      textCapitalization: TextCapitalization.sentences,
+                      onChanged: (value) => scheduleTitle = value,
+                      decoration: _scheduleFieldDecoration(
+                        'Schedule Title',
+                        Icons.edit_note,
+                      ),
                     ),
 
                     const SizedBox(height: 16),
@@ -482,8 +440,7 @@ class _SchedulePageState extends State<SchedulePage> {
                                 context,
                               ).copyWith(
                                 colorScheme: const ColorScheme.light(
-                                  primary:
-                                      const Color.fromARGB(255, 197, 165, 6),
+                                  primary: AppConstants.primaryColor,
                                 ),
                               ),
                               child: child!,
@@ -500,17 +457,9 @@ class _SchedulePageState extends State<SchedulePage> {
                         });
                       },
                       child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'Date',
-                          prefixIcon: const Icon(
-                            Icons.calendar_today_outlined,
-                            color: Color.fromARGB(255, 122, 102, 4),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(
-                              12,
-                            ),
-                          ),
+                        decoration: _scheduleFieldDecoration(
+                          'Date',
+                          Icons.calendar_month,
                         ),
                         child: Text(
                           _formatDate(
@@ -545,17 +494,9 @@ class _SchedulePageState extends State<SchedulePage> {
                         });
                       },
                       child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: 'Time',
-                          prefixIcon: const Icon(
-                            Icons.access_time_outlined,
-                            color: Color.fromARGB(255, 142, 118, 3),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(
-                              12,
-                            ),
-                          ),
+                        decoration: _scheduleFieldDecoration(
+                          'Time',
+                          Icons.access_time,
                         ),
                         child: Text(
                           selectedTime.format(
@@ -567,16 +508,39 @@ class _SchedulePageState extends State<SchedulePage> {
 
                     const SizedBox(height: 16),
 
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedRepeat,
+                      isExpanded: true,
+                      decoration:
+                          _scheduleFieldDecoration('Repeat', Icons.repeat),
+                      items: repeatOptions.map((value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        if (value != null) {
+                          setDialogState(() => selectedRepeat = value);
+                        }
+                      },
+                    ),
+
+                    const SizedBox(height: 16),
+
                     // ------------------------------------------------
                     // NOTES
                     // ------------------------------------------------
 
-                    TextField(
-                      controller: notesController,
+                    TextFormField(
+                      initialValue: scheduleNotes,
                       textCapitalization: TextCapitalization.sentences,
                       maxLines: 3,
-                      decoration: InputDecoration(
-                        labelText: 'Notes (optional)',
+                      onChanged: (value) => scheduleNotes = value,
+                      decoration: _scheduleFieldDecoration(
+                        'Notes (optional)',
+                        Icons.notes,
+                      ).copyWith(
                         hintText: 'Add additional details...',
                         prefixIcon: const Padding(
                           padding: EdgeInsets.only(
@@ -584,12 +548,7 @@ class _SchedulePageState extends State<SchedulePage> {
                           ),
                           child: Icon(
                             Icons.notes_outlined,
-                            color: Color.fromARGB(255, 207, 142, 2),
-                          ),
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(
-                            12,
+                            color: scheduleBrown,
                           ),
                         ),
                       ),
@@ -607,17 +566,18 @@ class _SchedulePageState extends State<SchedulePage> {
                   },
                   child: const Text(
                     'Cancel',
+                    style: TextStyle(color: scheduleBrown),
                   ),
                 ),
                 FilledButton(
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color.fromARGB(255, 197, 165, 6),
+                    backgroundColor: scheduleBrown,
                     foregroundColor: Colors.white,
                   ),
                   onPressed: _saving
                       ? null
                       : () async {
-                          final title = titleController.text.trim();
+                          final title = scheduleTitle.trim();
 
                           if (title.isEmpty) {
                             ScaffoldMessenger.of(
@@ -638,14 +598,28 @@ class _SchedulePageState extends State<SchedulePage> {
                           });
 
                           try {
-                            await _createSchedule(
-                              pet: selectedPet,
-                              title: title,
-                              type: selectedType,
-                              date: selectedScheduleDate,
-                              time: selectedTime,
-                              notes: notesController.text.trim(),
-                            );
+                            if (schedule == null) {
+                              await _createSchedule(
+                                pet: selectedPet,
+                                title: title,
+                                type: selectedType,
+                                date: selectedScheduleDate,
+                                time: selectedTime,
+                                notes: scheduleNotes.trim(),
+                                repeat: selectedRepeat,
+                              );
+                            } else {
+                              await _updateSchedule(
+                                schedule: schedule,
+                                pet: selectedPet,
+                                title: title,
+                                type: selectedType,
+                                date: selectedScheduleDate,
+                                time: selectedTime,
+                                notes: scheduleNotes.trim(),
+                                repeat: selectedRepeat,
+                              );
+                            }
 
                             if (!dialogContext.mounted) {
                               return;
@@ -684,8 +658,8 @@ class _SchedulePageState extends State<SchedulePage> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          'Save',
+                      : Text(
+                          schedule == null ? 'Save' : 'Update',
                         ),
                 ),
               ],
@@ -695,8 +669,11 @@ class _SchedulePageState extends State<SchedulePage> {
       },
     );
 
-    titleController.dispose();
-    notesController.dispose();
+    if (mounted && _saving) {
+      setState(() {
+        _saving = false;
+      });
+    }
 
     if (result == true && mounted) {
       // The schedule was already inserted.
@@ -717,6 +694,7 @@ class _SchedulePageState extends State<SchedulePage> {
     required DateTime date,
     required TimeOfDay time,
     required String notes,
+    required String repeat,
   }) async {
     final schedule = await _scheduleService.createSchedule(
       pet: pet,
@@ -726,6 +704,7 @@ class _SchedulePageState extends State<SchedulePage> {
       hour: time.hour,
       minute: time.minute,
       notes: notes,
+      repeat: repeat,
     );
 
     // Schedule native notification if the event is
@@ -733,6 +712,74 @@ class _SchedulePageState extends State<SchedulePage> {
     await _notificationService.scheduleReminder(
       schedule,
     );
+  }
+
+  Future<void> _updateSchedule({
+    required PetSchedule schedule,
+    required Pet pet,
+    required String title,
+    required String type,
+    required DateTime date,
+    required TimeOfDay time,
+    required String notes,
+    required String repeat,
+  }) async {
+    final updatedSchedule = await _scheduleService.updateSchedule(
+      scheduleId: schedule.id,
+      pet: pet,
+      title: title,
+      type: type,
+      date: date,
+      hour: time.hour,
+      minute: time.minute,
+      notes: notes,
+      repeat: repeat,
+    );
+
+    await _notificationService.cancel(schedule);
+    await _notificationService.scheduleReminder(updatedSchedule);
+  }
+
+  Future<void> _setScheduleDone(
+    PetSchedule schedule,
+    bool isDone,
+  ) async {
+    try {
+      await _scheduleService.updateScheduleStatus(
+        scheduleId: schedule.id,
+        isDone: isDone,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        final index = schedules.indexWhere((item) => item.id == schedule.id);
+        if (index >= 0) {
+          schedules[index] = schedules[index].copyWith(isDone: isDone);
+        }
+      });
+
+      try {
+        if (isDone) {
+          await _notificationService.cancel(schedule);
+        } else {
+          await _notificationService.scheduleReminder(schedule);
+        }
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Status saved, but reminder could not be updated: $error',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not update schedule status: $error')),
+      );
+    }
   }
 
   // ============================================================
@@ -885,52 +932,6 @@ class _SchedulePageState extends State<SchedulePage> {
       backgroundColor: cream,
 
       // ========================================================
-      // APP BAR
-      // ========================================================
-
-      appBar: AppBar(
-        backgroundColor: cream,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        title: const Text(
-          'Care Schedule',
-          style: TextStyle(
-            color: Color.fromARGB(255, 106, 79, 11),
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          // ----------------------------------------------------
-          // ENABLE NOTIFICATIONS
-          // ----------------------------------------------------
-
-          IconButton(
-            tooltip: 'Enable notifications',
-            onPressed: _enableNotifications,
-            icon: const Icon(
-              Icons.notifications_outlined,
-              color: Color.fromARGB(255, 128, 100, 0),
-            ),
-          ),
-
-          // ----------------------------------------------------
-          // REFRESH
-          // ----------------------------------------------------
-
-          IconButton(
-            tooltip: 'Refresh schedules',
-            onPressed: _refresh,
-            icon: const Icon(
-              Icons.refresh,
-              color: Color.fromARGB(255, 182, 140, 4),
-            ),
-          ),
-
-          const SizedBox(width: 8),
-        ],
-      ),
-
-      // ========================================================
       // BODY
       // ========================================================
 
@@ -947,91 +948,37 @@ class _SchedulePageState extends State<SchedulePage> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(
                   16,
-                  8,
+                  24,
                   16,
-                  100,
+                  220,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ==================================================
-                    // HEADER DESCRIPTION
-                    // ==================================================
-
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(
-                          18,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(
-                              0.04,
-                            ),
-                            blurRadius: 12,
-                            offset: const Offset(
-                              0,
-                              4,
-                            ),
-                          ),
-                        ],
-                      ),
-                      child: Row(
+                    const Center(
+                      child: Column(
                         children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: const Color.fromARGB(255, 128, 107, 0)
-                                  .withOpacity(
-                                0.10,
-                              ),
-                              borderRadius: BorderRadius.circular(
-                                14,
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.calendar_month_outlined,
-                              color: Color.fromARGB(255, 169, 147, 3),
-                              size: 26,
+                          Text(
+                            'Pet Schedule',
+                            style: TextStyle(
+                              fontSize: 23,
+                              fontWeight: FontWeight.w800,
+                              color: AppConstants.darkText,
                             ),
                           ),
-                          const SizedBox(
-                            width: 14,
-                          ),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Keep track of your pet care',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: darkyelloow,
-                                  ),
-                                ),
-                                SizedBox(
-                                  height: 4,
-                                ),
-                                Text(
-                                  'Create reminders for feeding, grooming, medicine, vet visits, and more.',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.black54,
-                                  ),
-                                ),
-                              ],
+                          SizedBox(height: 8),
+                          Text(
+                            'Keep track for your furry friend',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.black54,
                             ),
                           ),
                         ],
                       ),
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
 
                     // ==================================================
                     // CALENDAR HEADER
@@ -1044,7 +991,7 @@ class _SchedulePageState extends State<SchedulePage> {
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
-                            color: Color.fromARGB(255, 210, 173, 7),
+                            color: AppConstants.darkText,
                           ),
                         ),
                         const Spacer(),
@@ -1053,7 +1000,7 @@ class _SchedulePageState extends State<SchedulePage> {
                           child: const Text(
                             'Today',
                             style: TextStyle(
-                              color: Color.fromARGB(255, 218, 172, 6),
+                              color: AppConstants.darkText,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -1072,21 +1019,8 @@ class _SchedulePageState extends State<SchedulePage> {
                       ),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(
-                          20,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(
-                              0.04,
-                            ),
-                            blurRadius: 12,
-                            offset: const Offset(
-                              0,
-                              4,
-                            ),
-                          ),
-                        ],
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppConstants.lightPrimary),
                       ),
                       child: Column(
                         children: [
@@ -1100,7 +1034,7 @@ class _SchedulePageState extends State<SchedulePage> {
                                 onPressed: _previousMonth,
                                 icon: const Icon(
                                   Icons.chevron_left,
-                                  color: Color.fromARGB(255, 128, 100, 0),
+                                  color: AppConstants.darkText,
                                 ),
                               ),
                               Expanded(
@@ -1112,7 +1046,7 @@ class _SchedulePageState extends State<SchedulePage> {
                                     style: const TextStyle(
                                       fontSize: 17,
                                       fontWeight: FontWeight.bold,
-                                      color: Color.fromARGB(255, 206, 149, 4),
+                                      color: AppConstants.darkText,
                                     ),
                                   ),
                                 ),
@@ -1121,7 +1055,7 @@ class _SchedulePageState extends State<SchedulePage> {
                                 onPressed: _nextMonth,
                                 icon: const Icon(
                                   Icons.chevron_right,
-                                  color: Color.fromARGB(255, 204, 161, 3),
+                                  color: AppConstants.darkText,
                                 ),
                               ),
                             ],
@@ -1219,19 +1153,19 @@ class _SchedulePageState extends State<SchedulePage> {
                                     );
                                   });
 
-                                  _showAddScheduleDialog(
+                                  _showScheduleDialog(
                                     initialDate: day,
                                   );
                                 },
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: isSelected
-                                        ? yellow
+                                        ? AppConstants.lightPrimary
                                         : Colors.transparent,
                                     shape: BoxShape.circle,
                                     border: isToday && !isSelected
                                         ? Border.all(
-                                            color: yellow,
+                                            color: AppConstants.primaryColor,
                                             width: 1.5,
                                           )
                                         : null,
@@ -1245,7 +1179,7 @@ class _SchedulePageState extends State<SchedulePage> {
                                           color: !isCurrentMonth
                                               ? Colors.grey.shade400
                                               : isSelected
-                                                  ? Colors.white
+                                                  ? AppConstants.darkText
                                                   : Colors.black87,
                                           fontWeight: isToday || isSelected
                                               ? FontWeight.bold
@@ -1260,9 +1194,9 @@ class _SchedulePageState extends State<SchedulePage> {
                                             height: 5,
                                             decoration: BoxDecoration(
                                               color: isSelected
-                                                  ? Colors.white
-                                                  : const Color.fromARGB(
-                                                      194, 217, 156, 2),
+                                                  ? AppConstants.darkText
+                                                  : AppConstants.primaryColor
+                                                      .withOpacity(0.76),
                                               shape: BoxShape.circle,
                                             ),
                                           ),
@@ -1295,7 +1229,7 @@ class _SchedulePageState extends State<SchedulePage> {
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
-                                  color: Color.fromARGB(255, 213, 171, 1),
+                                  color: AppConstants.darkText,
                                 ),
                               ),
                               const SizedBox(
@@ -1319,12 +1253,11 @@ class _SchedulePageState extends State<SchedulePage> {
                         // ----------------------------------------------
 
                         FilledButton.icon(
-                          onPressed: () => _showAddScheduleDialog(
+                          onPressed: () => _showScheduleDialog(
                             initialDate: selectedDate,
                           ),
                           style: FilledButton.styleFrom(
-                            backgroundColor:
-                                const Color.fromARGB(255, 202, 166, 3),
+                            backgroundColor: AppConstants.primaryColor,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(
                               horizontal: 14,
@@ -1356,7 +1289,7 @@ class _SchedulePageState extends State<SchedulePage> {
                     if (selectedSchedules.isEmpty)
                       _EmptyScheduleCard(
                         selectedDate: selectedDate,
-                        onAdd: () => _showAddScheduleDialog(
+                        onAdd: () => _showScheduleDialog(
                           initialDate: selectedDate,
                         ),
                       )
@@ -1372,6 +1305,11 @@ class _SchedulePageState extends State<SchedulePage> {
                               ),
                               child: ScheduleEventCard(
                                 schedule: schedule,
+                                onEdit: () => _showScheduleDialog(
+                                  schedule: schedule,
+                                ),
+                                onStatusChanged: (isDone) =>
+                                    _setScheduleDone(schedule, isDone),
                                 onDelete: () => _deleteSchedule(
                                   schedule,
                                 ),
@@ -1381,79 +1319,11 @@ class _SchedulePageState extends State<SchedulePage> {
                         ).toList(),
                       ),
 
-                    // ==================================================
-                    // NOTIFICATION INFO
-                    // ==================================================
-
-                    const SizedBox(
-                      height: 12,
-                    ),
-
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(
-                        14,
-                      ),
-                      decoration: BoxDecoration(
-                        color: lightCream,
-                        borderRadius: BorderRadius.circular(
-                          14,
-                        ),
-                        border: Border.all(
-                          color: yellow.withOpacity(
-                            0.10,
-                          ),
-                        ),
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Icon(
-                            Icons.notifications_none,
-                            color: Color.fromARGB(255, 197, 172, 6),
-                            size: 22,
-                          ),
-                          const SizedBox(
-                            width: 10,
-                          ),
-                          Expanded(
-                            child: Text(
-                              'Tap the notification bell above to allow Pawcare to remind you about upcoming pet schedules.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade700,
-                                height: 1.4,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   ],
                 ),
               ),
             ),
 
-      // ========================================================
-      // FLOATING ADD BUTTON
-      // ========================================================
-
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color.fromARGB(255, 197, 165, 6),
-        foregroundColor: Colors.white,
-        onPressed: () => _showAddScheduleDialog(
-          initialDate: selectedDate,
-        ),
-        icon: const Icon(
-          Icons.add,
-        ),
-        label: const Text(
-          'Schedule',
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
     );
   }
 }
@@ -1510,28 +1380,20 @@ class _EmptyScheduleCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(
-              0.04,
-            ),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        border: Border.all(color: AppConstants.lightPrimary),
       ),
       child: Column(
         children: [
           Container(
             width: 58,
             height: 58,
-            decoration: BoxDecoration(
-              color: const Color.fromARGB(255, 128, 100, 3).withOpacity(0.08),
+            decoration: const BoxDecoration(
+              color: AppConstants.lightPrimary,
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.event_available_outlined,
-              color: Color.fromARGB(255, 213, 165, 6),
+              color: AppConstants.darkText,
               size: 30,
             ),
           ),
@@ -1542,7 +1404,7 @@ class _EmptyScheduleCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Color.fromARGB(255, 213, 165, 6),
+              color: AppConstants.darkText,
             ),
           ),
           const SizedBox(height: 6),
@@ -1561,9 +1423,9 @@ class _EmptyScheduleCard extends StatelessWidget {
           OutlinedButton.icon(
             onPressed: onAdd,
             style: OutlinedButton.styleFrom(
-              foregroundColor: Color.fromARGB(255, 213, 165, 6),
+              foregroundColor: AppConstants.darkText,
               side: const BorderSide(
-                color: Color.fromARGB(255, 213, 165, 6),
+                color: AppConstants.lightPrimary,
               ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),

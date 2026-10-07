@@ -45,6 +45,7 @@ class _LoginPageState extends State<LoginPage> {
       _isLoading = true;
     });
 
+    var signedIn = false;
     try {
       final response = await AuthService.signIn(
         email: _emailController.text.trim(),
@@ -54,6 +55,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
 
       if (response.session != null) {
+        signedIn = true;
         debugPrint(
           'Pawcare login successful.',
         );
@@ -91,7 +93,9 @@ class _LoginPageState extends State<LoginPage> {
         'Something went wrong. Please try again.',
       );
     } finally {
-      if (mounted) {
+      // AuthGate replaces this screen after a successful sign-in. Avoid
+      // scheduling a rebuild for LoginPage while that transition is underway.
+      if (mounted && !signedIn) {
         setState(() {
           _isLoading = false;
         });
@@ -191,7 +195,7 @@ class _LoginPageState extends State<LoginPage> {
 
                     Image.asset(
                       'assets/images/pawcare_logo.png',
-                      height: 90,
+                      height: 150,
                       errorBuilder: (_, __, ___) {
                         return const Icon(
                           Icons.pets_rounded,
@@ -394,13 +398,19 @@ class _LoginPageState extends State<LoginPage> {
                     // SIGN UP
                     // --------------------------------------------------
 
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         const Text(
                           "Don't have an account?",
                         ),
                         TextButton(
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: const Size(0, 40),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
                           onPressed: _isLoading
                               ? null
                               : () {

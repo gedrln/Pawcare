@@ -9,6 +9,8 @@ class PawcareHeader extends StatelessWidget {
   final String subtitle;
 
   final bool showProfile;
+  final bool showNotification;
+  final bool notificationBackground;
 
   final VoidCallback? onProfileTap;
   final VoidCallback? onNotificationTap;
@@ -20,6 +22,8 @@ class PawcareHeader extends StatelessWidget {
     required this.title,
     required this.subtitle,
     this.showProfile = true,
+    this.showNotification = true,
+    this.notificationBackground = true,
     this.onProfileTap,
     this.onNotificationTap,
     this.profile,
@@ -122,8 +126,22 @@ class PawcareHeader extends StatelessWidget {
     return '${words.first[0]}${words.last[0]}'.toUpperCase();
   }
 
+  String? _avatarUrl() {
+    final profileUrl = profile?.avatarUrl?.trim();
+    if (profileUrl != null && profileUrl.isNotEmpty) return profileUrl;
+
+    final metadata = Supabase.instance.client.auth.currentUser?.userMetadata;
+    final rawUrl = metadata?['avatar_url'] ??
+        metadata?['picture'] ??
+        metadata?['photo_url'] ??
+        metadata?['profile_image_url'];
+    final url = rawUrl?.toString().trim();
+    return url == null || url.isEmpty ? null : url;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final avatarUrl = _avatarUrl();
     return Row(
       children: [
         if (showProfile)
@@ -139,15 +157,35 @@ class PawcareHeader extends StatelessWidget {
                   color: AppConstants.lightPrimary,
                   borderRadius: BorderRadius.circular(17),
                 ),
-                child: Center(
-                  child: Text(
-                    _initials(),
-                    style: const TextStyle(
-                      color: AppConstants.darkText,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(17),
+                  child: avatarUrl != null
+                      ? Image.network(
+                          avatarUrl,
+                          width: 54,
+                          height: 54,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Center(
+                            child: Text(
+                              _initials(),
+                              style: const TextStyle(
+                                color: AppConstants.darkText,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        )
+                      : Center(
+                          child: Text(
+                            _initials(),
+                            style: const TextStyle(
+                              color: AppConstants.darkText,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -176,23 +214,28 @@ class PawcareHeader extends StatelessWidget {
             ],
           ),
         ),
-        Material(
-          color: Colors.transparent,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: IconButton(
-              onPressed: onNotificationTap,
-              icon: const Icon(
-                Icons.notifications_none_rounded,
-              ),
-              color: AppConstants.darkText,
-            ),
+        if (showNotification)
+          Material(
+            color: Colors.transparent,
+            child: notificationBackground
+                ? Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: _notificationButton(),
+                  )
+                : _notificationButton(),
           ),
-        ),
       ],
+    );
+  }
+
+  Widget _notificationButton() {
+    return IconButton(
+      onPressed: onNotificationTap,
+      icon: const Icon(Icons.notifications_none_rounded),
+      color: AppConstants.darkText,
     );
   }
 }

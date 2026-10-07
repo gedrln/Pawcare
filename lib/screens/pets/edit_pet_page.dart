@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../models/pet.dart';
+import '../../services/photo_crop_service.dart';
 import '../../services/pet_service.dart';
 
 class EditPetPage extends StatefulWidget {
@@ -35,6 +36,7 @@ class _EditPetPageState extends State<EditPetPage> {
   DateTime? _birthdate;
 
   String? _gender;
+  String _petStatus = 'Alive';
 
   Uint8List? _photoBytes;
 
@@ -57,6 +59,9 @@ class _EditPetPageState extends State<EditPetPage> {
     _birthdate = widget.pet.birthdate;
 
     _gender = widget.pet.gender;
+    _petStatus = Pet.statusOptions.contains(widget.pet.petStatus)
+        ? widget.pet.petStatus
+        : 'Alive';
   }
 
   @override
@@ -85,7 +90,15 @@ class _EditPetPageState extends State<EditPetPage> {
         return;
       }
 
-      final bytes = await image.readAsBytes();
+      if (!mounted) return;
+      final croppedImage = await PhotoCropService.cropSquare(
+        context: context,
+        sourcePath: image.path,
+        title: 'Crop pet photo',
+      );
+      if (croppedImage == null || !mounted) return;
+
+      final bytes = await croppedImage.readAsBytes();
 
       if (bytes.isEmpty) {
         return;
@@ -104,36 +117,12 @@ class _EditPetPageState extends State<EditPetPage> {
 
       setState(() {
         _photoBytes = bytes;
-        _photoExtension = _extensionFromName(
-          image.name,
-        );
+        _photoExtension = 'jpg';
         _removePhoto = false;
       });
     } catch (error) {
-      _showMessage(
-        'Could not select the photo.',
-      );
+      if (mounted) _showMessage('Could not select the photo.');
     }
-  }
-
-  String _extensionFromName(
-    String name,
-  ) {
-    final lower = name.toLowerCase();
-
-    if (lower.endsWith('.png')) {
-      return 'png';
-    }
-
-    if (lower.endsWith('.webp')) {
-      return 'webp';
-    }
-
-    if (lower.endsWith('.heic')) {
-      return 'heic';
-    }
-
-    return 'jpg';
   }
 
   // =========================================================
@@ -185,13 +174,6 @@ class _EditPetPageState extends State<EditPetPage> {
       return;
     }
 
-    if (_birthdate == null) {
-      _showMessage(
-        'Please select your pet\'s birthdate.',
-      );
-      return;
-    }
-
     if (_gender == null) {
       _showMessage(
         'Please select your pet\'s gender.',
@@ -211,8 +193,9 @@ class _EditPetPageState extends State<EditPetPage> {
         name: _nameController.text,
         species: _speciesController.text,
         breed: _breedController.text,
-        birthdate: _birthdate!,
+        birthdate: _birthdate,
         gender: _gender!,
+        petStatus: _petStatus,
         photoBytes: _photoBytes,
         photoExtension: _photoExtension,
         removePhoto: _removePhoto,
@@ -421,18 +404,11 @@ class _EditPetPageState extends State<EditPetPage> {
               controller: _breedController,
               textCapitalization: TextCapitalization.words,
               decoration: const InputDecoration(
-                labelText: 'Breed',
+                labelText: 'Breed (optional)',
                 prefixIcon: Icon(
                   Icons.badge_outlined,
                 ),
               ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter the breed.';
-                }
-
-                return null;
-              },
             ),
             const SizedBox(height: 14),
             InkWell(
@@ -441,15 +417,24 @@ class _EditPetPageState extends State<EditPetPage> {
                 16,
               ),
               child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Birthdate',
+                decoration: InputDecoration(
+                  labelText: 'Birthdate (optional)',
                   prefixIcon: Icon(
                     Icons.calendar_today_outlined,
                   ),
+                  suffixIcon: _birthdate == null
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear birthdate',
+                          onPressed: _saving
+                              ? null
+                              : () => setState(() => _birthdate = null),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
                 ),
                 child: Text(
                   _birthdate == null
-                      ? 'Select birthdate'
+                      ? 'Select birthdate (optional)'
                       : _formatDate(
                           _birthdate!,
                         ),
@@ -491,6 +476,28 @@ class _EditPetPageState extends State<EditPetPage> {
                       setState(() {
                         _gender = value;
                       });
+                    },
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              value: _petStatus,
+              decoration: const InputDecoration(
+                labelText: 'Pet Status',
+                prefixIcon: Icon(Icons.favorite_outline_rounded),
+              ),
+              items: Pet.statusOptions
+                  .map(
+                    (status) => DropdownMenuItem(
+                      value: status,
+                      child: Text(status),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _saving
+                  ? null
+                  : (value) {
+                      if (value == null) return;
+                      setState(() => _petStatus = value);
                     },
             ),
             const SizedBox(height: 28),

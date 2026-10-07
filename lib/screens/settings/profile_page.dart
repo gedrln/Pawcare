@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../models/user_profile.dart';
 import '../../services/auth_service.dart';
+import '../../services/photo_crop_service.dart';
 
 class ProfilePage extends StatefulWidget {
   final UserProfile profile;
@@ -22,7 +26,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
   late final TextEditingController _emailController;
 
+  final ImagePicker _imagePicker = ImagePicker();
+  Uint8List? _selectedPhotoBytes;
+  String? _selectedPhotoExtension;
+
   bool _isSaving = false;
+  bool _isPickingPhoto = false;
 
   @override
   void initState() {
@@ -61,6 +70,50 @@ class _ProfilePageState extends State<ProfilePage> {
     return '${words.first[0]}${words.last[0]}'.toUpperCase();
   }
 
+  Future<void> _chooseProfilePhoto() async {
+    setState(() => _isPickingPhoto = true);
+    try {
+      final image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1200,
+        maxHeight: 1200,
+      );
+      if (image == null) return;
+      if (!mounted) return;
+
+      final croppedImage = await PhotoCropService.cropSquare(
+        context: context,
+        sourcePath: image.path,
+        title: 'Crop profile photo',
+        circular: true,
+      );
+      if (croppedImage == null) return;
+
+      final bytes = await croppedImage.readAsBytes();
+      if (!mounted) return;
+      if (bytes.isEmpty || bytes.length > 8 * 1024 * 1024) {
+        _showMessage('Choose a profile photo smaller than 8 MB.');
+        return;
+      }
+
+      setState(() {
+        _selectedPhotoBytes = bytes;
+        _selectedPhotoExtension = 'jpg';
+      });
+    } catch (_) {
+      if (mounted) _showMessage('Could not select that profile photo.');
+    } finally {
+      if (mounted) setState(() => _isPickingPhoto = false);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
   Future<void> _save() async {
     final name = _nameController.text.trim();
 
@@ -79,7 +132,11 @@ class _ProfilePageState extends State<ProfilePage> {
     });
 
     try {
-      final response = await AuthService.updateFullName(name);
+      final response = await AuthService.updateProfile(
+        fullName: name,
+        photoBytes: _selectedPhotoBytes,
+        photoExtension: _selectedPhotoExtension,
+      );
 
       final updatedUser = response.user ?? AuthService.currentUser;
 
@@ -132,6 +189,44 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Widget _profileImage() {
+    final selectedPhoto = _selectedPhotoBytes;
+    if (selectedPhoto != null) {
+      return Image.memory(
+        selectedPhoto,
+        width: 104,
+        height: 104,
+        fit: BoxFit.cover,
+      );
+    }
+
+    final avatarUrl = widget.profile.avatarUrl;
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
+      return Image.network(
+        avatarUrl,
+        width: 104,
+        height: 104,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => _initialsAvatar(),
+      );
+    }
+
+    return _initialsAvatar();
+  }
+
+  Widget _initialsAvatar() {
+    return Center(
+      child: Text(
+        _initials(_nameController.text),
+        style: const TextStyle(
+          fontSize: 29,
+          fontWeight: FontWeight.w800,
+          color: AppConstants.darkText,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -147,32 +242,64 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         children: [
           Center(
-            child: Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: AppConstants.lightPrimary,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppConstants.primaryColor.withOpacity(.25),
-                  width: 2,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  _initials(
-                    _nameController.text,
+            child: Column(
+              children: [
+                InkWell(
+                  onTap:
+                      _isSaving || _isPickingPhoto ? null : _chooseProfilePhoto,
+                  customBorder: const CircleBorder(),
+                  child: SizedBox(
+                    width: 112,
+                    height: 112,
+                    child: Stack(
+                      children: [
+                        Container(
+                          width: 104,
+                          height: 104,
+                          decoration: BoxDecoration(
+                            color: AppConstants.lightPrimary,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppConstants.primaryColor.withOpacity(.25),
+                              width: 2,
+                            ),
+                          ),
+                          child: ClipOval(child: _profileImage()),
+                        ),
+                        Positioned(
+                          right: 2,
+                          bottom: 2,
+                          child: CircleAvatar(
+                            radius: 17,
+                            backgroundColor: AppConstants.primaryColor,
+                            child: Icon(
+                              _isPickingPhoto
+                                  ? Icons.hourglass_top_rounded
+                                  : Icons.camera_alt_rounded,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  style: const TextStyle(
-                    fontSize: 29,
-                    fontWeight: FontWeight.w800,
-                    color: AppConstants.darkText,
+                ),
+                const SizedBox(height: 6),
+                TextButton(
+                  onPressed:
+                      _isSaving || _isPickingPhoto ? null : _chooseProfilePhoto,
+                  child: Text(
+                    widget.profile.avatarUrl == null &&
+                            _selectedPhotoBytes == null
+                        ? 'Add profile photo'
+                        : 'Change profile photo',
                   ),
                 ),
-              ),
+              ],
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           const Center(
             child: Text(
               'Pet Owner',

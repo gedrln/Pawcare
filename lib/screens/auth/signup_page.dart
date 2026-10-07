@@ -1,8 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../services/auth_service.dart';
+import '../../services/photo_crop_service.dart';
 import 'verify_email_page.dart';
 
 class SignupPage extends StatefulWidget {
@@ -22,11 +26,50 @@ class _SignupPageState extends State<SignupPage> {
   final _passwordController = TextEditingController();
 
   final _confirmPasswordController = TextEditingController();
+  final _imagePicker = ImagePicker();
+
+  Uint8List? _profilePhotoBytes;
+  String? _profilePhotoExtension;
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
 
   bool _isLoading = false;
+
+  Future<void> _chooseProfilePhoto() async {
+    try {
+      final image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1200,
+        maxHeight: 1200,
+      );
+      if (image == null) return;
+      if (!mounted) return;
+
+      final croppedImage = await PhotoCropService.cropSquare(
+        context: context,
+        sourcePath: image.path,
+        title: 'Crop profile photo',
+        circular: true,
+      );
+      if (croppedImage == null || !mounted) return;
+
+      final bytes = await croppedImage.readAsBytes();
+      if (!mounted) return;
+      if (bytes.isEmpty || bytes.length > 8 * 1024 * 1024) {
+        _showMessage('Choose a profile photo smaller than 8 MB.');
+        return;
+      }
+
+      setState(() {
+        _profilePhotoBytes = bytes;
+        _profilePhotoExtension = 'jpg';
+      });
+    } catch (_) {
+      if (mounted) _showMessage('Could not select that profile photo.');
+    }
+  }
 
   @override
   void dispose() {
@@ -71,6 +114,8 @@ class _SignupPageState extends State<SignupPage> {
           MaterialPageRoute(
             builder: (_) => VerifyEmailPage(
               email: email,
+              profilePhotoBytes: _profilePhotoBytes,
+              profilePhotoExtension: _profilePhotoExtension,
             ),
           ),
         );
@@ -81,8 +126,21 @@ class _SignupPageState extends State<SignupPage> {
       // This is only reached if email confirmation
       // has been disabled in Supabase.
       if (response.session != null) {
+        var photoUploadFailed = false;
+        if (_profilePhotoBytes != null) {
+          try {
+            await AuthService.updateProfilePhoto(
+              photoBytes: _profilePhotoBytes!,
+              photoExtension: _profilePhotoExtension ?? 'jpg',
+            );
+          } catch (_) {
+            photoUploadFailed = true;
+          }
+        }
         _showMessage(
-          'Account created successfully.',
+          photoUploadFailed
+              ? 'Account created. You can add the profile photo later in your profile.'
+              : 'Account created successfully.',
         );
 
         Navigator.pop(context);
@@ -175,24 +233,6 @@ class _SignupPageState extends State<SignupPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    // PAW ICON
-                    Container(
-                      width: 80,
-                      height: 80,
-                      margin: const EdgeInsets.only(
-                        bottom: 18,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppConstants.lightPrimary,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.pets_rounded,
-                        size: 42,
-                        color: AppConstants.primaryColor,
-                      ),
-                    ),
-
                     const Text(
                       'Join Pawcare',
                       style: TextStyle(
@@ -216,6 +256,40 @@ class _SignupPageState extends State<SignupPage> {
 
                     const SizedBox(
                       height: 26,
+                    ),
+
+                    Center(
+                      child: Column(
+                        children: [
+                          InkWell(
+                            onTap: _isLoading ? null : _chooseProfilePhoto,
+                            customBorder: const CircleBorder(),
+                            child: CircleAvatar(
+                              radius: 42,
+                              backgroundColor: AppConstants.lightPrimary,
+                              backgroundImage: _profilePhotoBytes == null
+                                  ? null
+                                  : MemoryImage(_profilePhotoBytes!),
+                              child: _profilePhotoBytes == null
+                                  ? const Icon(
+                                      Icons.add_a_photo_outlined,
+                                      color: AppConstants.darkText,
+                                      size: 28,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: _isLoading ? null : _chooseProfilePhoto,
+                            child: Text(
+                              _profilePhotoBytes == null
+                                  ? 'Add profile photo (optional)'
+                                  : 'Change profile photo',
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
                     TextFormField(

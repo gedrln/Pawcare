@@ -79,9 +79,13 @@ class PetService {
   Future<Pet> addPet({
     required String name,
     required String species,
-    required String breed,
-    required DateTime birthdate,
+    String breed = '',
+    DateTime? birthdate,
     required String gender,
+    String petStatus = 'Alive',
+    String careNotes = '',
+    String funFact = '',
+    String healthNote = '',
     Uint8List? photoBytes,
     String? photoExtension,
     String? photoContentType,
@@ -105,19 +109,13 @@ class PetService {
       );
     }
 
-    if (cleanBreed.isEmpty) {
-      throw Exception(
-        'Breed cannot be empty.',
-      );
-    }
-
-    if (birthdate.isAfter(DateTime.now())) {
+    if (birthdate != null && birthdate.isAfter(DateTime.now())) {
       throw Exception(
         'Birthdate cannot be in the future.',
       );
     }
 
-    final ageInMonths = _calculateAgeInMonths(birthdate);
+    final ageInMonths = birthdate == null ? 0 : _calculateAgeInMonths(birthdate);
 
     final inserted = await _supabase
         .from('pets')
@@ -126,9 +124,17 @@ class PetService {
           'name': cleanName,
           'species': cleanSpecies,
           'breed': cleanBreed,
-          'birthdate': _dateOnly(birthdate),
+          'birthdate': birthdate == null ? null : _dateOnly(birthdate),
           'age_in_months': ageInMonths,
           'gender': cleanGender,
+          'pet_status': petStatus,
+          'fun_fact': funFact.trim(),
+          'health_note': healthNote.trim().isNotEmpty
+              ? healthNote.trim()
+              : careNotes.trim(),
+          'care_notes': healthNote.trim().isNotEmpty
+              ? healthNote.trim()
+              : careNotes.trim(),
         })
         .select()
         .single();
@@ -202,9 +208,13 @@ class PetService {
   Future<Pet> createPet({
     required String name,
     required String species,
-    required String breed,
-    required DateTime birthdate,
+    String breed = '',
+    DateTime? birthdate,
     required String gender,
+    String petStatus = 'Alive',
+    String careNotes = '',
+    String funFact = '',
+    String healthNote = '',
     Uint8List? photoBytes,
     String? photoExtension,
     String? photoContentType,
@@ -215,6 +225,10 @@ class PetService {
       breed: breed,
       birthdate: birthdate,
       gender: gender,
+      petStatus: petStatus,
+      careNotes: careNotes,
+      funFact: funFact,
+      healthNote: healthNote,
       photoBytes: photoBytes,
       photoExtension: photoExtension,
       photoContentType: photoContentType,
@@ -225,13 +239,58 @@ class PetService {
   // UPDATE PET
   // =========================================================
 
+  Future<Pet> updateCareNotes({
+    required String petId,
+    required String careNotes,
+  }) async {
+    final user = _currentUser;
+    final response = await _supabase
+        .from('pets')
+        .update({
+          'care_notes': careNotes.trim(),
+          'health_note': careNotes.trim(),
+        })
+        .eq('id', petId)
+        .eq('owner_id', user.id)
+        .select()
+        .single();
+
+    return Pet.fromMap(Map<String, dynamic>.from(response));
+  }
+
+  Future<Pet> updatePetNotes({
+    required String petId,
+    required String funFact,
+    required String healthNote,
+  }) async {
+    final user = _currentUser;
+    final normalizedHealthNote = healthNote.trim();
+    final response = await _supabase
+        .from('pets')
+        .update({
+          'fun_fact': funFact.trim(),
+          'health_note': normalizedHealthNote,
+          'care_notes': normalizedHealthNote,
+        })
+        .eq('id', petId)
+        .eq('owner_id', user.id)
+        .select()
+        .single();
+
+    return Pet.fromMap(Map<String, dynamic>.from(response));
+  }
+
   Future<Pet> updatePet({
     required String petId,
     required String name,
     required String species,
-    required String breed,
-    required DateTime birthdate,
+    String breed = '',
+    DateTime? birthdate,
     required String gender,
+    String petStatus = 'Alive',
+    String? careNotes,
+    String? funFact,
+    String? healthNote,
     Uint8List? photoBytes,
     String? photoExtension,
     String? photoContentType,
@@ -251,13 +310,7 @@ class PetService {
       );
     }
 
-    if (breed.trim().isEmpty) {
-      throw Exception(
-        'Breed cannot be empty.',
-      );
-    }
-
-    if (birthdate.isAfter(DateTime.now())) {
+    if (birthdate != null && birthdate.isAfter(DateTime.now())) {
       throw Exception(
         'Birthdate cannot be in the future.',
       );
@@ -298,16 +351,29 @@ class PetService {
       newPhotoUrl = _supabase.storage.from('pet-photos').getPublicUrl(path);
     }
 
-    final ageInMonths = _calculateAgeInMonths(birthdate);
+    final ageInMonths = birthdate == null ? 0 : _calculateAgeInMonths(birthdate);
 
     final updateData = <String, dynamic>{
       'name': name.trim(),
       'species': species.trim(),
       'breed': breed.trim(),
-      'birthdate': _dateOnly(birthdate),
+      'birthdate': birthdate == null ? null : _dateOnly(birthdate),
       'age_in_months': ageInMonths,
       'gender': gender.trim(),
+      'pet_status': petStatus,
     };
+
+    if (careNotes != null) {
+      updateData['care_notes'] = careNotes.trim();
+      updateData['health_note'] = careNotes.trim();
+    }
+    if (funFact != null) {
+      updateData['fun_fact'] = funFact.trim();
+    }
+    if (healthNote != null) {
+      updateData['health_note'] = healthNote.trim();
+      updateData['care_notes'] = healthNote.trim();
+    }
 
     if (newPhotoUrl != null) {
       updateData['photo_url'] = newPhotoUrl;

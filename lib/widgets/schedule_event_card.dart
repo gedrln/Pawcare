@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
+
+import '../core/constants/app_constants.dart';
 import '../models/pet_schedule.dart';
 
 class ScheduleEventCard extends StatelessWidget {
   final PetSchedule schedule;
+  final VoidCallback? onEdit;
+  final ValueChanged<bool>? onStatusChanged;
   final VoidCallback? onDelete;
 
   const ScheduleEventCard({
     super.key,
     required this.schedule,
+    this.onEdit,
+    this.onStatusChanged,
     this.onDelete,
   });
 
@@ -29,20 +35,7 @@ class ScheduleEventCard extends StatelessWidget {
   }
 
   Color _getColor() {
-    switch (schedule.type) {
-      case 'Feeding':
-        return const Color(0xFFE59B32);
-      case 'Grooming':
-        return const Color(0xFFB77BE4);
-      case 'Vaccination':
-        return const Color(0xFF62A8D8);
-      case 'Vet Visit':
-        return const Color(0xFF65B98A);
-      case 'Medicine':
-        return const Color(0xFFE27A72);
-      default:
-        return const Color(0xFFD88B2A);
-    }
+    return AppConstants.darkText;
   }
 
   @override
@@ -55,22 +48,16 @@ class ScheduleEventCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
+        border: Border.all(color: AppConstants.lightPrimary),
       ),
       child: Row(
         children: [
           Container(
             width: 48,
             height: 48,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(14),
+            decoration: const BoxDecoration(
+              color: AppConstants.lightPrimary,
+              shape: BoxShape.circle,
             ),
             child: Icon(
               _getIcon(),
@@ -85,10 +72,14 @@ class ScheduleEventCard extends StatelessWidget {
               children: [
                 Text(
                   schedule.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF6B3F14),
+                    color: schedule.isDone
+                        ? AppConstants.darkText.withOpacity(0.55)
+                        : AppConstants.darkText,
+                    decoration:
+                        schedule.isDone ? TextDecoration.lineThrough : null,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -119,6 +110,41 @@ class ScheduleEventCard extends StatelessWidget {
                     ),
                   ],
                 ),
+                const SizedBox(height: 5),
+                InkWell(
+                  onTap: onStatusChanged == null
+                      ? null
+                      : () => onStatusChanged!(!schedule.isDone),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          schedule.isDone
+                              ? Icons.check_circle_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                          size: 16,
+                          color: schedule.isDone
+                              ? Colors.green.shade700
+                              : AppConstants.darkText,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          schedule.isDone ? 'Done' : 'Mark as done',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: schedule.isDone
+                                ? Colors.green.shade700
+                                : AppConstants.darkText,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 if (schedule.notes.isNotEmpty) ...[
                   const SizedBox(height: 5),
                   Text(
@@ -134,13 +160,33 @@ class ScheduleEventCard extends StatelessWidget {
               ],
             ),
           ),
-          if (onDelete != null)
-            IconButton(
-              onPressed: onDelete,
-              icon: const Icon(
-                Icons.delete_outline_rounded,
-                color: Colors.black38,
-              ),
+          if (onEdit != null || onDelete != null)
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (onEdit != null)
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Edit schedule',
+                    onPressed: onEdit,
+                    icon: const Icon(
+                      Icons.edit_outlined,
+                      color: AppConstants.darkText,
+                      size: 20,
+                    ),
+                  ),
+                if (onDelete != null)
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Delete schedule',
+                    onPressed: onDelete,
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.black38,
+                      size: 20,
+                    ),
+                  ),
+              ],
             ),
         ],
       ),

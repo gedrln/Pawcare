@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show SchedulerPhase;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
@@ -51,19 +52,29 @@ class _AuthGateState extends State<AuthGate> {
           'Pawcare Session: ${session != null}',
         );
 
-        setState(() {
-          _session = session;
+        void applyAuthState() {
+          if (!mounted) return;
+          setState(() {
+            _session = session;
 
-          if (event == AuthChangeEvent.passwordRecovery) {
-            _isPasswordRecovery = true;
-          }
+            if (event == AuthChangeEvent.passwordRecovery) {
+              _isPasswordRecovery = true;
+            }
 
-          if (event == AuthChangeEvent.signedOut) {
-            _isPasswordRecovery = false;
-          }
+            if (event == AuthChangeEvent.signedOut) {
+              _isPasswordRecovery = false;
+            }
 
-          _isLoading = false;
-        });
+            _isLoading = false;
+          });
+        }
+
+        if (WidgetsBinding.instance.schedulerPhase ==
+            SchedulerPhase.persistentCallbacks) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => applyAuthState());
+        } else {
+          applyAuthState();
+        }
       },
       onError: (
         Object error,

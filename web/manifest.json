@@ -1,11 +1,11 @@
 {
-    "name": "pawcare_final",
-    "short_name": "pawcare_final",
+    "name": "Pawcare",
+    "short_name": "Pawcare",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FFF8ED",
+    "theme_color": "#FFF8ED",
+    "description": "Pet care made simple.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -7,12 +5,13 @@ import '../../core/constants/app_constants.dart';
 import '../../models/pet.dart';
 import '../../models/user_profile.dart';
 import '../../services/pet_service.dart';
-import '../../widgets/floating_ai_button.dart';
-import '../../widgets/floating_chat_window.dart';
 import '../pets/pets_page.dart';
+import '../pets/add_pet_page.dart';
+import '../pets/pet_details_page.dart';
 import '../schedule/schedule_page.dart';
 import '../settings/profile_page.dart';
 import '../settings/settings_page.dart';
+import '../../widgets/platform_backdrop_blur.dart';
 import 'dashboard_page.dart';
 
 class HomeShell extends StatefulWidget {
@@ -26,10 +25,10 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int selectedIndex = 0;
-
-  bool chatOpen = false;
+  int _todaySchedulesRefreshTrigger = 0;
 
   Pet? activePet;
+  List<Pet> pets = [];
 
   UserProfile profile = initialUserProfile;
 
@@ -65,14 +64,21 @@ class _HomeShellState extends State<HomeShell> {
 
   Future<void> _loadActivePet() async {
     try {
-      final pets = await _petService.getMyPets();
+      final loadedPets = await _petService.getMyPets();
 
       if (!mounted) {
         return;
       }
 
+      final currentId = activePet?.id;
+      final selectedPet = loadedPets.cast<Pet?>().firstWhere(
+            (pet) => pet?.id == currentId,
+            orElse: () => loadedPets.isEmpty ? null : loadedPets.first,
+          );
+
       setState(() {
-        activePet = pets.isNotEmpty ? pets.first : null;
+        pets = loadedPets;
+        activePet = selectedPet;
       });
     } catch (_) {
       if (!mounted) {
@@ -80,44 +86,33 @@ class _HomeShellState extends State<HomeShell> {
       }
 
       setState(() {
+        pets = [];
         activePet = null;
       });
     }
   }
 
-  // =========================================================
-  // CHAT
-  // =========================================================
-
-  void _openChat([
-    Pet? pet,
-  ]) {
-    final selectedPet = pet ?? activePet;
-
-    if (selectedPet == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please add a pet before using Pawcare AI.',
-          ),
-        ),
-      );
-
-      return;
-    }
-
-    setState(() {
-      activePet = selectedPet;
-      chatOpen = true;
-    });
+  void _selectActivePet(Pet pet) {
+    setState(() => activePet = pet);
   }
 
-  void _closeChat() {
-    setState(() {
-      chatOpen = false;
-    });
+  Future<void> _openPetDetails(Pet pet) async {
+    await Navigator.push<Pet>(
+      context,
+      MaterialPageRoute(builder: (_) => PetDetailsPage(pet: pet)),
+    );
+    await _loadActivePet();
+  }
+
+  Future<void> _addPet() async {
+    final pet = await Navigator.push<Pet>(
+      context,
+      MaterialPageRoute(builder: (_) => const AddPetPage()),
+    );
+    await _loadActivePet();
+    if (pet != null && mounted) {
+      setState(() => activePet = pet);
+    }
   }
 
   // =========================================================
@@ -150,7 +145,9 @@ class _HomeShellState extends State<HomeShell> {
   ) async {
     setState(() {
       selectedIndex = index;
-      chatOpen = false;
+      if (index == 0) {
+        _todaySchedulesRefreshTrigger++;
+      }
     });
 
     if (index == 0 || index == 1) {
@@ -168,10 +165,15 @@ class _HomeShellState extends State<HomeShell> {
   ) {
     final pages = [
       DashboardPage(
+        key: const ValueKey('dashboard'),
         profile: profile,
+        pets: pets,
         activePet: activePet,
+        onActivePetChanged: _selectActivePet,
+        onOpenPet: _openPetDetails,
+        onAddPet: _addPet,
+        todayRefreshTrigger: _todaySchedulesRefreshTrigger,
         onProfileTap: _openProfile,
-        onOpenChat: _openChat,
 
         // My Pets tab
         onOpenPets: () {
@@ -192,36 +194,17 @@ class _HomeShellState extends State<HomeShell> {
     ];
 
     return Scaffold(
-      extendBody: true,
       body: SafeArea(
-        bottom: false,
-        child: Stack(
+        child: Column(
           children: [
-            IndexedStack(
-              index: selectedIndex,
-              children: pages,
-            ),
-            if (chatOpen && activePet != null)
-              Positioned(
-                right: 16,
-                bottom: 92,
-                child: FloatingChatWindow(
-                  pet: activePet!,
-                  onClose: _closeChat,
-                ),
-              ),
-            Positioned(
-              right: 18,
-              bottom: 88,
-              child: FloatingAiButton(
-                open: chatOpen,
-                onPressed: chatOpen ? _closeChat : () => _openChat(),
+            Expanded(
+              child: IndexedStack(
+                index: selectedIndex,
+                children: pages,
               ),
             ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 14,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
               child: _FloatingGlassNavigationBar(
                 selectedIndex: selectedIndex,
                 onDestinationSelected: _onNavigationChanged,
@@ -256,11 +239,9 @@ class _FloatingGlassNavigationBar extends StatelessWidget {
       borderRadius: BorderRadius.circular(
         30,
       ),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(
-          sigmaX: 18,
-          sigmaY: 18,
-        ),
+      child: PlatformBackdropBlur(
+        sigmaX: 18,
+        sigmaY: 18,
         child: Container(
           height: 68,
           decoration: BoxDecoration(
@@ -331,9 +312,9 @@ class _FloatingGlassNavigationBar extends StatelessWidget {
                   child: _GlassNavItem(
                     index: 3,
                     selectedIndex: selectedIndex,
-                    icon: Icons.settings_outlined,
-                    selectedIcon: Icons.settings_rounded,
-                    label: 'Settings',
+                    icon: Icons.account_circle_outlined,
+                    selectedIcon: Icons.account_circle_rounded,
+                    label: 'Profile',
                     onTap: onDestinationSelected,
                   ),
                 ),

@@ -83,12 +83,14 @@ class _PetsPageState extends State<PetsPage> {
           20,
           18,
           20,
-          110,
+          220,
         ),
         children: [
-          const PawcareHeader(
+          PawcareHeader(
             title: 'My Pets',
             subtitle: 'Manage your pet profiles in one place.',
+            showProfile: false,
+            showNotification: false,
           ),
           const SizedBox(height: 22),
           FutureBuilder<List<Pet>>(

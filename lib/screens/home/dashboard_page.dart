@@ -2,38 +2,51 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../models/pet.dart';
+import '../../models/pet_schedule.dart';
 import '../../models/user_profile.dart';
+import '../../services/pet_schedule_service.dart';
 import '../../widgets/pawcare_header.dart';
+import '../../widgets/platform_backdrop_blur.dart';
 
 class DashboardPage extends StatelessWidget {
   final UserProfile profile;
+  final List<Pet> pets;
   final Pet? activePet;
 
   final VoidCallback onProfileTap;
   final VoidCallback onOpenPets;
   final VoidCallback onOpenSchedule;
-  final void Function(Pet pet) onOpenChat;
+  final void Function(Pet pet) onOpenPet;
+  final VoidCallback onAddPet;
+  final ValueChanged<Pet> onActivePetChanged;
+  final int todayRefreshTrigger;
 
   const DashboardPage({
     super.key,
     required this.profile,
+    required this.pets,
     required this.activePet,
     required this.onProfileTap,
     required this.onOpenPets,
     required this.onOpenSchedule,
-    required this.onOpenChat,
+    required this.onOpenPet,
+    required this.onAddPet,
+    required this.onActivePetChanged,
+    this.todayRefreshTrigger = 0,
   });
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 110),
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 220),
       children: [
         PawcareHeader(
           title: 'Good day, ${_firstName(profile.name)}!',
           subtitle: 'Let’s take good care of your furry friend.',
           profile: profile,
           onProfileTap: onProfileTap,
+          showNotification: false,
         ),
 
         const SizedBox(height: 24),
@@ -41,14 +54,17 @@ class DashboardPage extends StatelessWidget {
         // ---------------------------------------------------------------
         // ACTIVE PET
         // ---------------------------------------------------------------
-        if (activePet != null)
-          _ActivePetCard(
-            pet: activePet!,
-            onTap: () => onOpenChat(activePet!),
+        if (pets.isNotEmpty)
+          _ActivePetsCarousel(
+            pets: pets,
+            activePet: activePet,
+            onActivePetChanged: onActivePetChanged,
+            onOpenPet: onOpenPet,
+            onAddPet: onAddPet,
           )
         else
           _NoPetCard(
-            onAddPet: onOpenPets,
+            onAddPet: onAddPet,
           ),
 
         const SizedBox(height: 26),
@@ -76,9 +92,7 @@ class DashboardPage extends StatelessWidget {
               child: _QuickCard(
                 icon: Icons.favorite_border_rounded,
                 title: 'Pet Wellness',
-                onTap: activePet == null
-                    ? onOpenPets
-                    : () => onOpenChat(activePet!),
+                onTap: onOpenPets,
               ),
             ),
           ],
@@ -91,18 +105,16 @@ class DashboardPage extends StatelessWidget {
             Expanded(
               child: _QuickCard(
                 icon: Icons.calendar_month_rounded,
-                title: 'Care Schedule',
+                title: 'Pet Schedule',
                 onTap: onOpenSchedule,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: _QuickCard(
-                icon: Icons.chat_bubble_outline_rounded,
-                title: 'Ask Pawcare',
-                onTap: activePet == null
-                    ? onOpenPets
-                    : () => onOpenChat(activePet!),
+                icon: Icons.note_alt_outlined,
+                title: 'Pet Notes',
+                onTap: onOpenPets,
               ),
             ),
           ],
@@ -119,15 +131,10 @@ class DashboardPage extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        if (activePet != null)
-          _TodayPetCard(
-            pet: activePet!,
-            onAskPawcare: () => onOpenChat(activePet!),
-          )
-        else
-          _TodayEmptyCard(
-            onAddPet: onOpenPets,
-          ),
+        _TodaySchedules(
+          refreshTrigger: todayRefreshTrigger,
+          onOpenSchedule: onOpenSchedule,
+        ),
       ],
     );
   }
@@ -151,112 +158,361 @@ class DashboardPage extends StatelessWidget {
 
 class _ActivePetCard extends StatelessWidget {
   final Pet pet;
-  final VoidCallback onTap;
+  final VoidCallback onOpenPet;
 
   const _ActivePetCard({
     required this.pet,
-    required this.onTap,
+    required this.onOpenPet,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [
-            AppConstants.primaryColor,
-            Color(0xFFD97A28),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppConstants.primaryColor.withOpacity(0.20),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          _DashboardPetPhoto(
-            pet: pet,
-            size: 78,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Your active pet',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+    final borderRadius = BorderRadius.circular(24);
+    final healthNote = pet.healthNote.trim().isEmpty
+        ? pet.careNotes.trim()
+        : pet.healthNote.trim();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onOpenPet,
+        borderRadius: borderRadius,
+        child: ClipRRect(
+          borderRadius: borderRadius,
+          child: PlatformBackdropBlur(
+            sigmaX: 18,
+            sigmaY: 18,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppConstants.primaryColor.withOpacity(0.46),
+                    const Color(0xFFD97A28).withOpacity(0.34),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  pet.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 23,
-                    fontWeight: FontWeight.w800,
-                  ),
+                borderRadius: borderRadius,
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.78),
+                  width: 1.2,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${pet.breed} • ${pet.ageLabel}',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppConstants.primaryColor.withOpacity(0.14),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
                   ),
-                ),
-                const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: onTap,
-                  child: Container(
+                ],
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      _DashboardPetPhoto(pet: pet, size: 54),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Your active pet',
+                              style: TextStyle(
+                                color: AppConstants.darkText.withOpacity(0.78),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              pet.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppConstants.darkText,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              [
+                                if (pet.species.trim().isNotEmpty) pet.species,
+                                if (pet.breed.trim().isNotEmpty) pet.breed,
+                                pet.gender,
+                                pet.ageLabel,
+                              ]
+                                  .where((value) => value.trim().isNotEmpty)
+                                  .join(' • '),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: AppConstants.darkText.withOpacity(0.78),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 13,
-                      vertical: 8,
+                      horizontal: 10,
+                      vertical: 7,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.16),
-                      borderRadius: BorderRadius.circular(30),
+                      color: Colors.white.withOpacity(0.42),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.auto_awesome_rounded,
-                          size: 16,
-                          color: Colors.white,
+                        _CarouselPetNoteLine(
+                          icon: Icons.lightbulb_outline_rounded,
+                          label: 'Fun fact',
+                          value: pet.funFact.trim().isEmpty
+                              ? 'Not added yet'
+                              : pet.funFact.trim(),
                         ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Ask Pawcare AI',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        const SizedBox(height: 5),
+                        _CarouselPetNoteLine(
+                          icon: Icons.health_and_safety_outlined,
+                          label: 'Health',
+                          value: healthNote.isEmpty
+                              ? 'No health note'
+                              : healthNote,
                         ),
                       ],
                     ),
                   ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CarouselPetNoteLine extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _CarouselPetNoteLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: AppConstants.darkText),
+        const SizedBox(width: 6),
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            color: AppConstants.darkText,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: AppConstants.darkText.withOpacity(0.9),
+              fontSize: 10,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ActivePetsCarousel extends StatefulWidget {
+  final List<Pet> pets;
+  final Pet? activePet;
+  final ValueChanged<Pet> onActivePetChanged;
+  final ValueChanged<Pet> onOpenPet;
+  final VoidCallback onAddPet;
+
+  const _ActivePetsCarousel({
+    required this.pets,
+    required this.activePet,
+    required this.onActivePetChanged,
+    required this.onOpenPet,
+    required this.onAddPet,
+  });
+
+  @override
+  State<_ActivePetsCarousel> createState() => _ActivePetsCarouselState();
+}
+
+class _ActivePetsCarouselState extends State<_ActivePetsCarousel> {
+  late final PageController _pageController;
+  late int _currentIndex;
+
+  int _indexOfActivePet() {
+    final activeId = widget.activePet?.id;
+    if (activeId == null) return 0;
+    final index = widget.pets.indexWhere((pet) => pet.id == activeId);
+    return index < 0 ? 0 : index;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = _indexOfActivePet();
+    _pageController = PageController(
+      initialPage: _currentIndex,
+      viewportFraction: 0.91,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ActivePetsCarousel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final selectedIndex = _indexOfActivePet();
+    if (selectedIndex != _currentIndex && _pageController.hasClients) {
+      _currentIndex = selectedIndex;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted ||
+            !_pageController.hasClients ||
+            _indexOfActivePet() != selectedIndex) {
+          return;
+        }
+
+        _pageController.jumpToPage(selectedIndex);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pageCount = widget.pets.length + 1;
+    return Column(
+      children: [
+        SizedBox(
+          height: 180,
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: pageCount,
+            onPageChanged: (index) {
+              setState(() => _currentIndex = index);
+              if (index < widget.pets.length) {
+                widget.onActivePetChanged(widget.pets[index]);
+              }
+            },
+            itemBuilder: (context, index) {
+              if (index == widget.pets.length) {
+                return _AddPetCarouselCard(onTap: widget.onAddPet);
+              }
+              final pet = widget.pets[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: _ActivePetCard(
+                  pet: pet,
+                  onOpenPet: () => widget.onOpenPet(pet),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(pageCount, (index) {
+            final selected = index == _currentIndex;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: selected ? 18 : 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppConstants.primaryColor
+                    : AppConstants.lightPrimary,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddPetCarouselCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AddPetCarouselCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppConstants.lightPrimary),
+            ),
+            child: const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: AppConstants.lightPrimary,
+                  child: Icon(
+                    Icons.add_rounded,
+                    size: 32,
+                    color: AppConstants.darkText,
+                  ),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Add another pet',
+                  style: TextStyle(
+                    color: AppConstants.darkText,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Create a profile for another furry friend.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black54, fontSize: 12),
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -312,7 +568,7 @@ class _NoPetCard extends StatelessWidget {
           const SizedBox(height: 7),
           const Text(
             'Add your pet to start managing their profile, '
-            'care schedule, and Pawcare AI conversations.',
+            'care schedule, and important care notes.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.black54,
@@ -435,198 +691,228 @@ class _SectionTitle extends StatelessWidget {
 }
 
 // ===========================================================================
-// TODAY PET CARD
+// PET PHOTO
 // ===========================================================================
 
-class _TodayPetCard extends StatelessWidget {
-  final Pet pet;
-  final VoidCallback onAskPawcare;
+class _TodaySchedules extends StatefulWidget {
+  final int refreshTrigger;
+  final VoidCallback onOpenSchedule;
 
-  const _TodayPetCard({
-    required this.pet,
-    required this.onAskPawcare,
+  const _TodaySchedules({
+    required this.refreshTrigger,
+    required this.onOpenSchedule,
+  });
+
+  @override
+  State<_TodaySchedules> createState() => _TodaySchedulesState();
+}
+
+class _TodaySchedulesState extends State<_TodaySchedules> {
+  final PetScheduleService _scheduleService = PetScheduleService();
+  late Future<List<PetSchedule>> _schedulesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _schedulesFuture = _scheduleService.getTodaySchedules();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TodaySchedules oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshTrigger != widget.refreshTrigger) {
+      _reload();
+    }
+  }
+
+  void _reload() {
+    setState(() {
+      _schedulesFuture = _scheduleService.getTodaySchedules();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<PetSchedule>>(
+      future: _schedulesFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return _TodaySchedulesMessage(
+            message: 'Could not load today\'s schedules.',
+            actionLabel: 'Retry',
+            onPressed: _reload,
+          );
+        }
+
+        final schedules = snapshot.data ?? const <PetSchedule>[];
+        if (schedules.isEmpty) {
+          return _TodaySchedulesMessage(
+            message: 'No pet schedules are set for today.',
+            actionLabel: 'Add a schedule',
+            onPressed: widget.onOpenSchedule,
+          );
+        }
+
+        return Column(
+          children: [
+            for (var index = 0; index < schedules.length; index++) ...[
+              if (index > 0) const SizedBox(height: 10),
+              _TodayScheduleCard(
+                schedule: schedules[index],
+                onTap: widget.onOpenSchedule,
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TodayScheduleCard extends StatelessWidget {
+  final PetSchedule schedule;
+  final VoidCallback onTap;
+
+  const _TodayScheduleCard({
+    required this.schedule,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: AppConstants.lightPrimary,
-        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppConstants.lightPrimary),
       ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              _DashboardPetPhoto(
-                pet: pet,
-                size: 58,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                color: AppConstants.lightPrimary,
+                shape: BoxShape.circle,
               ),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${pet.name}\'s profile',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: AppConstants.darkText,
-                      ),
+              child: const Icon(
+                Icons.event_note_rounded,
+                color: AppConstants.darkText,
+              ),
+            ),
+            const SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    schedule.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: AppConstants.darkText,
                     ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${schedule.petName} • ${schedule.type}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.black54,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (schedule.repeat != 'Does not repeat') ...[
                     const SizedBox(height: 3),
                     Text(
-                      '${pet.species} • ${pet.gender}',
+                      schedule.repeat,
                       style: const TextStyle(
                         color: Colors.black54,
-                        fontSize: 13,
+                        fontSize: 12,
                       ),
                     ),
                   ],
-                ),
-              ),
-              const Icon(
-                Icons.favorite_rounded,
-                color: AppConstants.primaryColor,
-              ),
-            ],
-          ),
-          const SizedBox(height: 15),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppConstants.backgroundColor,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  color: AppConstants.primaryColor,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '${pet.name} is ${pet.ageLabel}. '
-                    'Keep their care information updated for better Pawcare assistance.',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Colors.black54,
-                      height: 1.4,
+                  if (schedule.notes.trim().isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      schedule.notes.trim(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: onAskPawcare,
-              icon: const Icon(Icons.auto_awesome_rounded),
-              label: const Text('Ask Pawcare AI'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppConstants.darkText,
-                side: const BorderSide(
-                  color: AppConstants.primaryColor,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  vertical: 13,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
+                  ],
+                ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Text(
+              TimeOfDay(hour: schedule.hour, minute: schedule.minute)
+                  .format(context),
+              style: const TextStyle(
+                color: AppConstants.darkText,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ===========================================================================
-// TODAY EMPTY CARD
-// ===========================================================================
+class _TodaySchedulesMessage extends StatelessWidget {
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onPressed;
 
-class _TodayEmptyCard extends StatelessWidget {
-  final VoidCallback onAddPet;
-
-  const _TodayEmptyCard({
-    required this.onAddPet,
+  const _TodaySchedulesMessage({
+    required this.message,
+    this.actionLabel,
+    this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: AppConstants.lightPrimary,
-        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppConstants.lightPrimary),
       ),
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: const BoxDecoration(
-              color: AppConstants.lightPrimary,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.add_rounded,
-              color: AppConstants.darkText,
-            ),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.black54),
           ),
-          const SizedBox(width: 13),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Start with your first pet',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: AppConstants.darkText,
-                  ),
-                ),
-                SizedBox(height: 3),
-                Text(
-                  'Create a profile to personalize Pawcare.',
-                  style: TextStyle(
-                    color: Colors.black54,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: onAddPet,
-            icon: const Icon(
-              Icons.chevron_right_rounded,
-            ),
-          ),
+          if (actionLabel != null && onPressed != null) ...[
+            const SizedBox(height: 8),
+            TextButton(onPressed: onPressed, child: Text(actionLabel!)),
+          ],
         ],
       ),
     );
   }
 }
-
-// ===========================================================================
-// PET PHOTO
-// ===========================================================================
 
 class _DashboardPetPhoto extends StatelessWidget {
   final Pet pet;

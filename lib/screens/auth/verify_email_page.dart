@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,10 +11,14 @@ import 'login_page.dart';
 
 class VerifyEmailPage extends StatefulWidget {
   final String email;
+  final Uint8List? profilePhotoBytes;
+  final String? profilePhotoExtension;
 
   const VerifyEmailPage({
     super.key,
     required this.email,
+    this.profilePhotoBytes,
+    this.profilePhotoExtension,
   });
 
   @override
@@ -105,6 +110,18 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
         code: code,
       );
 
+      var profilePhotoFailed = false;
+      if (widget.profilePhotoBytes != null) {
+        try {
+          await AuthService.updateProfilePhoto(
+            photoBytes: widget.profilePhotoBytes!,
+            photoExtension: widget.profilePhotoExtension ?? 'jpg',
+          );
+        } catch (_) {
+          profilePhotoFailed = true;
+        }
+      }
+
       if (!mounted) return;
 
       // Verification creates a session.
@@ -138,8 +155,10 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
                 ),
               ],
             ),
-            content: const Text(
-              'Your Pawcare account has been verified successfully. You can now log in.',
+            content: Text(
+              profilePhotoFailed
+                  ? 'Your Pawcare account has been verified. The photo could not be saved, but you can add it later in your profile.'
+                  : 'Your Pawcare account has been verified successfully. You can now log in.',
             ),
             actions: [
               FilledButton(

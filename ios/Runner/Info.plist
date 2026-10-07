@@ -9,7 +9,7 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 
 	<key>CFBundleDisplayName</key>
-	<string>Pawcare Final</string>
+	<string>Pawcare</string>
 
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
@@ -21,7 +21,7 @@
 	<string>6.0</string>
 
 	<key>CFBundleName</key>
-	<string>pawcare_final</string>
+	<string>Pawcare</string>
 
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
@@ -51,6 +51,9 @@
 
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Choose a profile photo for your Pawcare account.</string>
 
 	<key>UIApplicationSceneManifest</key>
 	<dict>
