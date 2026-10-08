@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../services/auth_service.dart';
+import '../../services/notification_service.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -40,6 +41,10 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     try {
       await AuthService.sendPasswordReset(
         _emailController.text.trim(),
+      );
+
+      await NotificationService.instance.showVerificationCodeSent(
+        passwordReset: true,
       );
 
       if (!mounted) return;

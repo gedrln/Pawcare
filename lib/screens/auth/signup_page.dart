@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../services/auth_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/photo_crop_service.dart';
 import 'verify_email_page.dart';
 
@@ -109,6 +110,10 @@ class _SignupPageState extends State<SignupPage> {
       // The user now needs to enter the OTP
       // that Supabase sent to their email.
       if (response.user != null && response.session == null) {
+        await NotificationService.instance.showVerificationCodeSent(
+          passwordReset: false,
+        );
+        if (!mounted) return;
         Navigator.push(
           context,
           MaterialPageRoute(

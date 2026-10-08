@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../services/auth_service.dart';
+import '../../services/notification_service.dart';
 import 'login_page.dart';
 
 class VerifyEmailPage extends StatefulWidget {
@@ -221,6 +222,10 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
     try {
       await AuthService.resendSignupCode(
         widget.email,
+      );
+
+      await NotificationService.instance.showVerificationCodeSent(
+        passwordReset: false,
       );
 
       if (!mounted) return;

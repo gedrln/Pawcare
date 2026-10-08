@@ -241,6 +241,48 @@ class NotificationService {
     }
   }
 
+  /// Shows a generic auth notification after Supabase sends an email code.
+  /// Never include the code itself: notifications can be visible on a lock
+  /// screen or to anyone with access to the device.
+  Future<void> showVerificationCodeSent({required bool passwordReset}) async {
+    try {
+      await initialize();
+      if (!await hasPermission() && !await requestPermission()) return;
+
+      const details = NotificationDetails(
+        android: AndroidNotificationDetails(
+          'pawcare_auth_channel',
+          'Account Security',
+          channelDescription: 'Account verification and recovery alerts.',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+        macOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
+        web: WebNotificationDetails(),
+      );
+
+      await _plugin.show(
+        id: passwordReset ? 710002 : 710001,
+        title: passwordReset ? 'Password reset code sent' : 'Verify your email',
+        body: passwordReset
+            ? 'Check your email for the password reset code.'
+            : 'Check your email for the account verification code.',
+        notificationDetails: details,
+      );
+    } catch (_) {
+      // Notification delivery must not interrupt authentication.
+    }
+  }
+
   // ============================================================
   // SCHEDULE FUTURE NOTIFICATION
   // ============================================================
