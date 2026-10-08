@@ -17,6 +17,8 @@ class NotificationService {
   bool _initialized = false;
   static const String _enabledPreferenceKey =
       'pet_schedule_notifications_enabled';
+  static const String _todaySummaryDateKeyPrefix =
+      'pet_schedule_today_summary_date_';
 
   bool get supportsScheduledNotifications => !kIsWeb;
 
@@ -181,6 +183,11 @@ class NotificationService {
     await preferences.setBool(_enabledPreferenceKey, enabled);
     if (!enabled) {
       await cancelAll();
+      for (final key in preferences.getKeys().where(
+        (key) => key.startsWith(_todaySummaryDateKeyPrefix),
+      )) {
+        await preferences.remove(key);
+      }
     }
   }
 
@@ -361,6 +368,132 @@ class NotificationService {
     for (final PetSchedule schedule in schedules) {
       await scheduleReminder(schedule);
     }
+
+    await scheduleTodaySummary(schedules);
+  }
+
+  /// Sends one daily summary for today's unfinished pet care schedules.
+  /// The reminder is set for 8:00 AM, or shortly after now if the owner
+  /// opens the app later in the day.
+  Future<void> scheduleTodaySummary(List<PetSchedule> schedules) async {
+    if (kIsWeb || !await remindersEnabled() || !await hasPermission()) {
+      return;
+    }
+
+    await initialize();
+
+    if (schedules.isEmpty) return;
+
+    final now = tz.TZDateTime.now(tz.local);
+    final today = DateTime(now.year, now.month, now.day);
+    final dateKey = _dateKey(today);
+    final preferences = await SharedPreferences.getInstance();
+    final preferenceKey =
+        '$_todaySummaryDateKeyPrefix${schedules.first.ownerId}';
+
+    // Avoid issuing another summary every time the Schedule page is opened.
+    if (preferences.getString(preferenceKey) == dateKey) return;
+
+    final todaysSchedules = schedules.where((schedule) {
+      return !schedule.isDone && _occursOn(schedule, today);
+    }).toList()
+      ..sort((a, b) {
+        final aMinutes = a.hour * 60 + a.minute;
+        final bMinutes = b.hour * 60 + b.minute;
+        return aMinutes.compareTo(bMinutes);
+      });
+
+    if (todaysSchedules.isEmpty) return;
+
+    final scheduledDate = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      8,
+    );
+    final notificationDate = scheduledDate.isAfter(now)
+        ? scheduledDate
+        : now.add(const Duration(minutes: 1));
+
+    final lines = todaysSchedules
+        .take(3)
+        .map(
+          (schedule) =>
+              '${schedule.petName}: ${schedule.title} at ${schedule.time}',
+        )
+        .join(' · ');
+    final moreCount = todaysSchedules.length - 3;
+    final body = moreCount > 0 ? '$lines · and $moreCount more' : lines;
+
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'pet_schedule_channel',
+        'Pet Schedule Reminders',
+        channelDescription: 'Notifications for pet care schedules.',
+        importance: Importance.high,
+        priority: Priority.high,
+        playSound: true,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      macOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
+
+    try {
+      await _plugin.zonedSchedule(
+        id: _todaySummaryNotificationId(today),
+        title: 'You have ${todaysSchedules.length} pet schedule'
+            '${todaysSchedules.length == 1 ? '' : 's'} today',
+        body: body,
+        scheduledDate: notificationDate,
+        notificationDetails: details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      );
+      await preferences.setString(preferenceKey, dateKey);
+    } catch (_) {
+      // Individual schedule reminders and the in-app schedule list remain
+      // available if this platform cannot schedule the summary.
+    }
+  }
+
+  bool _occursOn(PetSchedule schedule, DateTime day) {
+    final start = DateTime(
+      schedule.date.year,
+      schedule.date.month,
+      schedule.date.day,
+    );
+    if (day.isBefore(start)) return false;
+    if (day.year == start.year &&
+        day.month == start.month &&
+        day.day == start.day) {
+      return true;
+    }
+    return switch (schedule.repeat) {
+      'Everyday' => true,
+      'Every week' => day.weekday == start.weekday,
+      'Every month' => day.day == start.day,
+      _ => false,
+    };
+  }
+
+  String _dateKey(DateTime date) =>
+      '${date.year}-${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
+  int _todaySummaryNotificationId(DateTime date) {
+    // Use a date-derived ID so rescheduling replaces the same day's summary.
+    final daysSinceEpoch = DateTime.utc(date.year, date.month, date.day)
+            .millisecondsSinceEpoch ~/
+        Duration.millisecondsPerDay;
+    return 0x60000000 + daysSinceEpoch;
   }
 
   Future<void> showTestNotification() async {

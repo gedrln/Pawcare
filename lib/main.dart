@@ -26,6 +26,26 @@ class PawcareApp extends StatelessWidget {
       title: AppConstants.appName,
       theme: AppTheme.light,
       home: const AuthGate(),
+      onGenerateRoute: (settings) {
+        final routeUri = Uri.tryParse(settings.name ?? '');
+        final isAuthCallback = routeUri != null &&
+            (routeUri.queryParameters.containsKey('code') ||
+                routeUri.queryParameters.containsKey('access_token') ||
+                routeUri.queryParameters.containsKey('token_hash') ||
+                routeUri.queryParameters.containsKey('error'));
+
+        if (isAuthCallback) {
+          // Supabase handles the callback and updates the auth session. Map
+          // its incoming URL to the existing auth gate instead of letting
+          // Navigator treat `/?code=...` as an undefined app route.
+          return MaterialPageRoute<void>(
+            settings: settings,
+            builder: (_) => const AuthGate(),
+          );
+        }
+
+        return null;
+      },
     );
   }
 }

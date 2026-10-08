@@ -86,7 +86,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
         });
         _message(kIsWeb
             ? 'Notifications are enabled in this browser.'
-            : 'Reminders are enabled for your saved schedules.');
+            : 'Daily schedule summaries and care reminders are enabled.');
       }
     } catch (error) {
       if (mounted) {
@@ -136,8 +136,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(_enabled
-                        ? 'Alerts are enabled for your saved pet schedules.'
-                        : 'Get notified when it is time for your pets’ care.'),
+                        ? 'Daily summary at 8:00 AM, plus alerts at scheduled times.'
+                        : 'Get a morning summary and alerts at scheduled times.'),
                   ),
                 ),
                 if (_updating) ...[
