@@ -16,7 +16,7 @@ PawCare is a mobile application designed to help pet owners manage their pets' i
   - View registered pets
   - Edit pet information
   - Add or update pet photos
-  - Store pet name, species, breed, birthdate, age, and gender
+  - Store pet name, species, breed, birthdate, age, gender, and pet status
 
 - **Pet Scheduling**
   - Calendar-based schedule
@@ -32,32 +32,3 @@ PawCare is a mobile application designed to help pet owners manage their pets' i
   - Quick access to Pet Schedule
   - View today's or upcoming activities
 
-## Technology Stack
-
-- **Flutter** — Mobile application framework
-- **Dart** — Programming language
-- **Supabase** — Authentication and backend services
-- **PostgreSQL** — Database through Supabase
-- **Google OAuth** — Google authentication
-- **Figma** — UI/UX and wireframe design
-- **Git/GitHub** — Version control
-
-## Platform
-
-PawCare is developed as an **iOS mobile application using Flutter**.
-
-## Prerequisites
-
-Install the following before running the project:
-
-- Flutter SDK
-- Xcode
-- CocoaPods
-- Git
-- A configured Supabase project
-- Google OAuth configuration if Google Sign-In is enabled
-
-Check your Flutter setup with:
-
-```bash
-flutter doctor
