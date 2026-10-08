@@ -325,6 +325,7 @@ class PetService {
     }
 
     String? newPhotoUrl;
+    String? newPhotoPath;
 
     // ---------------------------------------------------------
     // UPLOAD NEW PHOTO
@@ -337,7 +338,11 @@ class PetService {
 
       final contentType = photoContentType ?? _contentTypeFor(extension);
 
-      final path = '${user.id}/$petId.$extension';
+      // Use a fresh object key for each replacement. This prevents the image
+      // cache from reusing the previous photo URL after an upload.
+      final path =
+          '${user.id}/${petId}_${DateTime.now().microsecondsSinceEpoch}.$extension';
+      newPhotoPath = path;
 
       await _supabase.storage.from('pet-photos').uploadBinary(
             path,
@@ -401,7 +406,8 @@ class PetService {
           existingPet.photoUrl!,
         );
 
-        if (oldPath != null) {
+        // Never remove the new object if a storage path is reused.
+        if (oldPath != null && oldPath != newPhotoPath) {
           await _supabase.storage.from('pet-photos').remove([
             oldPath,
           ]);

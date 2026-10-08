@@ -36,8 +36,13 @@ class PhotoCropService {
         if (!kIsWeb)
           IOSUiSettings(
             title: title,
-            doneButtonTitle: 'Use Photo',
+            doneButtonTitle: 'Save Crop',
             cancelButtonTitle: 'Cancel',
+            // iPad can otherwise present the cropper without a clearly
+            // visible action bar. Show its navigation bar so Save Crop is
+            // available as an explicit commit action.
+            embedInNavigationController: true,
+            hidesNavigationBar: false,
             cropStyle: circular ? CropStyle.circle : CropStyle.rectangle,
             aspectRatioLockEnabled: true,
             aspectRatioPickerButtonHidden: true,
