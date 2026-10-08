@@ -15,6 +15,7 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
 
   bool _initialized = false;
+  static const List<int> _reminderLeadTimes = [20, 5];
   static const String _enabledPreferenceKey =
       'pet_schedule_notifications_enabled';
   static const String _todaySummaryDateKeyPrefix =
@@ -297,60 +298,12 @@ class NotificationService {
     await initialize();
 
     final DateTime scheduledDateTime = schedule.scheduledDateTime;
-
-    tz.TZDateTime scheduledDate = tz.TZDateTime(
-      tz.local,
-      scheduledDateTime.year,
-      scheduledDateTime.month,
-      scheduledDateTime.day,
-      scheduledDateTime.hour,
-      scheduledDateTime.minute,
-    );
-
-    final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
-
     final DateTimeComponents? repeatComponents = switch (schedule.repeat) {
       'Everyday' => DateTimeComponents.time,
       'Every week' => DateTimeComponents.dayOfWeekAndTime,
       'Every month' => DateTimeComponents.dayOfMonthAndTime,
       _ => null,
     };
-
-    if (!scheduledDate.isAfter(now)) {
-      if (repeatComponents == null) return;
-
-      // Start the repeating alert at its next valid occurrence. Monthly
-      // reminders on dates such as the 31st simply skip shorter months.
-      for (var offset = 0; offset <= 370; offset++) {
-        final candidateDate = DateTime(
-          now.year,
-          now.month,
-          now.day + offset,
-          scheduledDateTime.hour,
-          scheduledDateTime.minute,
-        );
-        final matches = switch (schedule.repeat) {
-          'Everyday' => true,
-          'Every week' => candidateDate.weekday == scheduledDateTime.weekday,
-          'Every month' => candidateDate.day == scheduledDateTime.day,
-          _ => false,
-        };
-        if (matches) {
-          final candidateScheduledDate = tz.TZDateTime(
-            tz.local,
-            candidateDate.year,
-            candidateDate.month,
-            candidateDate.day,
-            candidateDate.hour,
-            candidateDate.minute,
-          );
-          if (candidateScheduledDate.isAfter(now)) {
-            scheduledDate = candidateScheduledDate;
-            break;
-          }
-        }
-      }
-    }
 
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
@@ -375,23 +328,91 @@ class NotificationService {
       web: WebNotificationDetails(),
     );
 
-    try {
-      await _plugin.zonedSchedule(
-        id: _notificationId(schedule.id),
-        title: '${schedule.petName}: ${schedule.title}',
-        body: '${schedule.type} is scheduled for ${schedule.time}.',
-        scheduledDate: scheduledDate,
-        notificationDetails: notificationDetails,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        matchDateTimeComponents: repeatComponents,
-        payload: schedule.id,
+    // Clear reminders created by the previous single-reminder implementation.
+    await _plugin.cancel(id: _notificationId(schedule.id));
+
+    final now = tz.TZDateTime.now(tz.local);
+    for (final leadMinutes in _reminderLeadTimes) {
+      final reminderDate = _nextReminderDate(
+        schedule,
+        leadMinutes: leadMinutes,
+        now: now,
+        repeatComponents: repeatComponents,
       );
-    } catch (_) {
-      // Browsers do not support future scheduled notifications.
-      //
-      // The Schedule page and Home dashboard will still show
-      // today's schedules inside the app.
+      final notificationId = _notificationId('${schedule.id}:$leadMinutes');
+      await _plugin.cancel(id: notificationId);
+      if (reminderDate == null) continue;
+
+      try {
+        await _plugin.zonedSchedule(
+          id: notificationId,
+          title: '${schedule.petName}: ${schedule.title} in $leadMinutes minutes',
+          body: '${schedule.type} is scheduled for ${schedule.time}.',
+          scheduledDate: reminderDate,
+          notificationDetails: notificationDetails,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          matchDateTimeComponents: repeatComponents,
+          payload: schedule.id,
+        );
+      } catch (_) {
+        // Browsers do not support future scheduled notifications.
+        // The Schedule page and Home dashboard still show the schedule.
+      }
     }
+  }
+
+  tz.TZDateTime? _nextReminderDate(
+    PetSchedule schedule, {
+    required int leadMinutes,
+    required tz.TZDateTime now,
+    required DateTimeComponents? repeatComponents,
+  }) {
+    final eventDateTime = schedule.scheduledDateTime;
+    final reminderDateTime =
+        eventDateTime.subtract(Duration(minutes: leadMinutes));
+    final initialReminder = tz.TZDateTime(
+      tz.local,
+      reminderDateTime.year,
+      reminderDateTime.month,
+      reminderDateTime.day,
+      reminderDateTime.hour,
+      reminderDateTime.minute,
+    );
+
+    if (initialReminder.isAfter(now)) return initialReminder;
+    if (repeatComponents == null) return null;
+
+    // Find the next repeating event whose reminder time has not passed.
+    for (var offset = 0; offset <= 370; offset++) {
+      final candidateEvent = DateTime(
+        now.year,
+        now.month,
+        now.day + offset,
+        eventDateTime.hour,
+        eventDateTime.minute,
+      );
+      final matches = switch (schedule.repeat) {
+        'Everyday' => true,
+        'Every week' => candidateEvent.weekday == eventDateTime.weekday,
+        'Every month' => candidateEvent.day == eventDateTime.day,
+        _ => false,
+      };
+      if (!matches) continue;
+
+      final candidateReminder =
+          candidateEvent.subtract(Duration(minutes: leadMinutes));
+      final reminder = tz.TZDateTime(
+        tz.local,
+        candidateReminder.year,
+        candidateReminder.month,
+        candidateReminder.day,
+        candidateReminder.hour,
+        candidateReminder.minute,
+      );
+      if (reminder.isAfter(now)) return reminder;
+    }
+
+    return null;
   }
 
   // ============================================================
@@ -583,6 +604,11 @@ class NotificationService {
     await _plugin.cancel(
       id: _notificationId(schedule.id),
     );
+    for (final leadMinutes in _reminderLeadTimes) {
+      await _plugin.cancel(
+        id: _notificationId('${schedule.id}:$leadMinutes'),
+      );
+    }
   }
 
   // ============================================================
